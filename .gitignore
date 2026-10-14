@@ -1,0 +1,11 @@
+/bin/
+web/node_modules/
+web/dist/*
+!web/dist/.gitkeep
+deelook-data/
+# FANUC FOCAS2 libraries: not part of the repository (see fwlib/README.md)
+/fwlib/**/*.dll
+/fwlib/**/*.so
+/fwlib/**/*.so.*
+# NC Guide screen captures used to match the HMI: kept locally, not published
+/docs/reference/

@@ -1,0 +1,10 @@
+// Colours of the Fanuc display, sampled on NC Guide.
+export const PURPLE = '#a700a6'
+export const GREEN = '#008000'
+export const BLUE = '#0000ff'
+export const BLACK = '#000000'
+export const GRAY = '#c0c0c0'
+export const WHITE = '#fcfcfa'
+export const RED = '#ff0000'
+export const CYAN = '#00ffff'
+export const YELLOW = '#ffff00'

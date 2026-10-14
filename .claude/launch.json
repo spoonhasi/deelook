@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "deelook",
+      "runtimeExecutable": "go",
+      "runtimeArgs": ["run", ".", "-listen", "127.0.0.1:8090", "-lamps", "1=ncguide,13=ncguide", "-fwlib", "fwlib/windows-x64/Fwlib64.dll"],
+      "port": 8090
+    }
+  ]
+}

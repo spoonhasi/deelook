@@ -1,0 +1,6 @@
+# keep LF everywhere (build.sh runs on Linux too); FANUC libraries are binary
+* text=auto eol=lf
+*.dll binary
+*.so binary
+*.so.* binary
+*.png binary
