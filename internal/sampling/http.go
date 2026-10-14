@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"mime"
 	"net/http"
+	"os"
+	"path/filepath"
 	"runtime"
 	"strconv"
 	"sync"
@@ -29,6 +31,9 @@ import (
 //	GET  /api/sampling/sessions              recorded sessions (?machine=&limit=)
 //	GET  /api/sampling/sessions/{id}/csv     one session as CSV
 //	GET  /api/sampling/sessions/{id}/view    a session reduced for charts (?from=&to= µs, &buckets=)
+//	GET  /api/sampling/sessions/{id}/db      a finished session's SQLite file, to hand over
+//	DELETE /api/sampling/sessions/{id}       delete a finished session (its file)
+//	GET  /api/sampling/storage               free disk space and the session files' size
 func (m *Manager) Routes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/sampling/types", func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, map[string]any{"servo": ServoTypes, "spindle": SpindleTypes, "cnc": CncInfoTypes,
@@ -179,6 +184,47 @@ func (m *Manager) Routes(mux *http.ServeMux) {
 			// headers are gone already; end the body so the file is visibly cut
 			fmt.Fprintf(w, "\n# export failed: %v\n", err)
 		}
+	})
+	mux.HandleFunc("GET /api/sampling/sessions/{id}/db", func(w http.ResponseWriter, r *http.Request) {
+		id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+		if err != nil {
+			http.Error(w, "bad session id", http.StatusBadRequest)
+			return
+		}
+		path, err := m.store.File(id)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusConflict)
+			return
+		}
+		f, err := os.Open(path)
+		if err != nil {
+			http.Error(w, "no such session", http.StatusNotFound)
+			return
+		}
+		defer f.Close()
+		fi, err := f.Stat()
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "application/vnd.sqlite3")
+		w.Header().Set("Content-Disposition", mime.FormatMediaType("attachment", map[string]string{"filename": filepath.Base(path)}))
+		http.ServeContent(w, r, "", fi.ModTime(), f)
+	})
+	mux.HandleFunc("DELETE /api/sampling/sessions/{id}", func(w http.ResponseWriter, r *http.Request) {
+		id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+		if err != nil {
+			http.Error(w, "bad session id", http.StatusBadRequest)
+			return
+		}
+		if err := m.store.Delete(id); err != nil {
+			http.Error(w, err.Error(), http.StatusConflict)
+			return
+		}
+		writeJSON(w, map[string]bool{"ok": true})
+	})
+	mux.HandleFunc("GET /api/sampling/storage", func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, m.store.Storage())
 	})
 }
 

@@ -37,7 +37,7 @@ import (
 func main() {
 	o := defineFlags(flag.CommandLine)
 	listen, hubURL, defMachine, interval, timeout := o.listen, o.hub, o.machine, o.interval, o.timeout
-	lampFlag, fwlib, dbPath, open := o.lamps, o.fwlib, o.db, o.open
+	lampFlag, fwlib, open := o.lamps, o.fwlib, o.open
 	// deelook.toml next to the executable first, so the command line wins;
 	// where there is none, one with the defaults is put there to edit
 	exeDir := executableDir()
@@ -49,8 +49,21 @@ func main() {
 		fatal("%v", err)
 	}
 	flag.Parse()
-	if *dbPath == "" {
-		*dbPath = filepath.Join(exeDir, "deelook-data", "sampling.db")
+	// the data folder: session files in sessions/, the machine list; an
+	// old "db" setting names the single database of earlier builds, whose
+	// folder it was
+	dataDir, legacyDB := *o.data, ""
+	if *o.db != "" {
+		legacyDB = *o.db
+		if dataDir == "" {
+			dataDir = filepath.Dir(*o.db)
+		}
+	}
+	if dataDir == "" {
+		dataDir = filepath.Join(exeDir, "deelook-data")
+	}
+	if legacyDB == "" {
+		legacyDB = filepath.Join(dataDir, "sampling.db")
 	}
 
 	lamps, err := parseLamps(*lampFlag)
@@ -95,16 +108,17 @@ func main() {
 		log.Printf("no FOCAS2 library, so no sampling (the HMI screens work): %v", libErr)
 		log.Printf("for sampling, put %s next to the executable or set fwlib in %s (fwlib/README.md)", libraryFiles(), settingsName)
 	}
-	store, err := sampling.OpenStore(*dbPath)
+	store, err := sampling.OpenStore(filepath.Join(dataDir, "sessions"), legacyDB)
 	if err != nil {
 		fatal("%v", err)
 	}
 	defer store.Close()
-	// the machine list (with CNC addresses) sits beside the database, in
-	// its own file: the database alone is what gets handed around
-	machinesPath := filepath.Join(filepath.Dir(*dbPath), machinesName)
+	store.SetMinFree(*o.minFree)
+	// the machine list (with CNC addresses) sits in the data folder in a
+	// file of its own: session files alone are what gets handed around
+	machinesPath := filepath.Join(dataDir, machinesName)
 	moveFile(filepath.Join(exeDir, oldMachinesName), machinesPath) // where earlier builds kept it
-	moveFile(filepath.Join(filepath.Dir(*dbPath), oldMachinesName), machinesPath)
+	moveFile(filepath.Join(dataDir, oldMachinesName), machinesPath)
 	machines, err := sampling.OpenMachines(machinesPath, store)
 	if err != nil {
 		fatal("%v", err)
@@ -113,7 +127,7 @@ func main() {
 	defer sampler.Close() // never leave sampling running on a CNC
 	sampler.Routes(mux)
 	if lib != nil {
-		log.Printf("FOCAS2 %s (%s); sampling on the hub's nc_focas2_fanuc machines; database %s", lib.Path, lib.Version, *dbPath)
+		log.Printf("FOCAS2 %s (%s); sampling on the hub's nc_focas2_fanuc machines; data in %s", lib.Path, lib.Version, dataDir)
 	}
 	mux.HandleFunc("GET /api/screens/{screen}/stream", func(w http.ResponseWriter, r *http.Request) {
 		def, ok := screens.Get(r.PathValue("screen"))

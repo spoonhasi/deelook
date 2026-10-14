@@ -14,7 +14,7 @@ import (
 
 func TestMachinesFile(t *testing.T) {
 	dir := t.TempDir()
-	st, err := OpenStore(filepath.Join(dir, "data", "s.db"))
+	st, err := OpenStore(filepath.Join(dir, "sessions"), "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -74,26 +74,29 @@ func TestMachinesFile(t *testing.T) {
 		t.Errorf("next local id %q", id)
 	}
 
-	// the sampling database knows nothing of machine addresses
+	// the session files know nothing of machine addresses
 	st.Close()
-	for _, f := range []string{"s.db", "s.db-wal"} {
-		if b, err := os.ReadFile(filepath.Join(dir, "data", f)); err == nil && bytes.Contains(b, []byte("10.0.0.")) {
+	files, _ := filepath.Glob(filepath.Join(dir, "sessions", "*"))
+	if len(files) == 0 {
+		t.Fatal("no session file")
+	}
+	for _, f := range files {
+		if b, err := os.ReadFile(f); err == nil && bytes.Contains(b, []byte("10.0.0.")) {
 			t.Errorf("%s holds a machine address", f)
 		}
 	}
 }
 
-// TestMachinesFromOldDatabase opens a database where an older deelook kept
-// the machine list: the list moves to the file and no address stays in the
-// database file.
+// TestMachinesFromOldDatabase: the machine list an older single database
+// held ends up in the machine list file, and that database is gone.
 func TestMachinesFromOldDatabase(t *testing.T) {
 	dir := t.TempDir()
-	dbPath := filepath.Join(dir, "s.db")
-	st, err := OpenStore(dbPath)
+	legacy := filepath.Join(dir, "sampling.db")
+	old, err := sql.Open("sqlite", dsn(legacy, true))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := st.db.Exec(`CREATE TABLE machines (id TEXT PRIMARY KEY, source TEXT NOT NULL, name TEXT NOT NULL,
+	if _, err := old.Exec(`CREATE TABLE machines (id TEXT PRIMARY KEY, source TEXT NOT NULL, name TEXT NOT NULL,
 		host TEXT NOT NULL, port INTEGER NOT NULL, axes TEXT NOT NULL DEFAULT '[]', spindles TEXT NOT NULL DEFAULT '[]',
 		paths INTEGER NOT NULL DEFAULT 0, updated_at TEXT NOT NULL)`); err != nil {
 		t.Fatal(err)
@@ -103,16 +106,17 @@ func TestMachinesFromOldDatabase(t *testing.T) {
 		{"2", "hub", "bench", "198.51.100.77", 8193, `["X1","X2"]`, `["S1"]`, 2, synced.Format(time.RFC3339Nano)},
 		{"L1", "local", "lathe", "198.51.100.78", 8193, `[]`, `[]`, 0, synced.Add(-time.Hour).Format(time.RFC3339Nano)},
 	} {
-		if _, err := st.db.Exec(`INSERT INTO machines VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`, row...); err != nil {
+		if _, err := old.Exec(`INSERT INTO machines VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`, row...); err != nil {
 			t.Fatal(err)
 		}
 	}
-	st.Close()
+	old.Close()
 
-	st, err = OpenStore(dbPath)
+	st, err := OpenStore(filepath.Join(dir, "sessions"), legacy)
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer st.Close()
 	ms, err := OpenMachines(filepath.Join(dir, "machines.json"), st)
 	if err != nil {
 		t.Fatal(err)
@@ -124,16 +128,9 @@ func TestMachinesFromOldDatabase(t *testing.T) {
 	if !ms.hubSyncedAt().Equal(synced) {
 		t.Errorf("hub synced at %v", ms.hubSyncedAt())
 	}
-	var n int
-	if err := st.db.QueryRow(`SELECT COUNT(*) FROM sqlite_master WHERE name = 'machines'`).Scan(&n); err != nil || n != 0 {
-		t.Errorf("machines table still there (%d, %v)", n, err)
-	}
-	st.Close()
-	db, _ := sql.Open("sqlite", "file:"+filepath.ToSlash(dbPath))
-	db.Close()
-	for _, f := range []string{"s.db", "s.db-wal"} {
-		if b, err := os.ReadFile(filepath.Join(dir, f)); err == nil && bytes.Contains(b, []byte("198.51.100.")) {
-			t.Errorf("%s still holds a machine address", f)
+	for _, f := range []string{legacy, legacy + "-wal"} {
+		if _, err := os.Stat(f); err == nil {
+			t.Errorf("%s still there", f)
 		}
 	}
 }

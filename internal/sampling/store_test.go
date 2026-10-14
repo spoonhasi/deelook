@@ -1,6 +1,9 @@
 package sampling
 
 import (
+	"bytes"
+	"database/sql"
+	"os"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -11,7 +14,8 @@ import (
 )
 
 func TestStoreCSV(t *testing.T) {
-	st, err := OpenStore(filepath.Join(t.TempDir(), "s.db"))
+	dir := t.TempDir()
+	st, err := OpenStore(dir, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -24,7 +28,8 @@ func TestStoreCSV(t *testing.T) {
 	if err := cfg.Validate(); err != nil {
 		t.Fatal(err)
 	}
-	id, err := st.CreateSession("2", "bench", cfg, time.Now())
+	started := time.Date(2026, 10, 14, 16, 34, 15, 0, time.Local)
+	id, err := st.CreateSession("2", "bench 31i/B", cfg, started)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -39,6 +44,13 @@ func TestStoreCSV(t *testing.T) {
 	}, nil)
 	if err != nil {
 		t.Fatal(err)
+	}
+	// while sampling it is listed but cannot be downloaded or deleted
+	if list, _ := st.Sessions("", 10); len(list) != 1 || list[0].Status != "running" {
+		t.Errorf("running: %+v", list)
+	}
+	if _, err := st.File(id); err == nil {
+		t.Error("a running session's file handed out")
 	}
 	if err := st.FinishSession(id, "stopped", "", now, []int64{8, 2}); err != nil {
 		t.Fatal(err)
@@ -64,12 +76,44 @@ func TestStoreCSV(t *testing.T) {
 
 	list, err := st.Sessions("2", 10)
 	if err != nil || len(list) != 1 || list[0].Status != "stopped" || list[0].Samples[0] != 8 {
-		t.Errorf("sessions: %+v %v", list, err)
+		t.Fatalf("sessions: %+v %v", list, err)
+	}
+	// one file, standing alone, named for when and where
+	path, err := st.File(id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if base := filepath.Base(path); base != "20261014-163415_bench-31i-B_s1.db" || list[0].File != base || list[0].Size == 0 {
+		t.Errorf("file %q, listed %q size %d", base, list[0].File, list[0].Size)
+	}
+	if _, err := os.Stat(path + "-wal"); err == nil {
+		t.Error("a finished session's file still has a write-ahead log")
+	}
+	if st.Storage().Sessions != 1 || st.Storage().Used == 0 {
+		t.Errorf("storage %+v", st.Storage())
+	}
+
+	// a deelook started later finds it; deleting removes the file
+	st2, err := OpenStore(dir, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if list, _ := st2.Sessions("", 10); len(list) != 1 || list[0].ID != id {
+		t.Errorf("reopened: %+v", list)
+	}
+	if err := st2.Delete(id); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(path); err == nil {
+		t.Error("deleted session's file still there")
+	}
+	if list, _ := st2.Sessions("", 10); len(list) != 0 {
+		t.Errorf("after delete: %+v", list)
 	}
 }
 
 func TestStoreCSVExtended(t *testing.T) {
-	st, err := OpenStore(filepath.Join(t.TempDir(), "s.db"))
+	st, err := OpenStore(t.TempDir(), "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -96,6 +140,7 @@ func TestStoreCSVExtended(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// read while still being written: a connection of its own
 	var b strings.Builder
 	if err := st.WriteCSV(&b, id); err != nil {
 		t.Fatal(err)
@@ -131,6 +176,150 @@ func TestStoreCSVExtended(t *testing.T) {
 	v, _ = st.View(id, 1000, 2000, 10)
 	if len(v.Channels[2].Min) != 1 || v.Channels[2].Min[0] != 1 {
 		t.Errorf("zoomed %+v", v.Channels[2])
+	}
+	if err := st.FinishSession(id, "completed", "", now, []int64{3, 3, 3}); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// TestStoreInterrupted: a session a dead process left running is found
+// "interrupted" by the next start, its file standing alone again.
+func TestStoreInterrupted(t *testing.T) {
+	dir := t.TempDir()
+	st, err := OpenStore(dir, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	id, err := st.CreateSession("2", "bench", Config{Mode: "basic", ServoPeriodUs: 1000}, time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := st.Add(id, []Chunk{{Channel: 0, Data: []uint16{1, 2}, ReceivedAt: time.Now()}}, nil); err != nil {
+		t.Fatal(err)
+	}
+	st.Close() // the process dies: no FinishSession
+
+	st, err = OpenStore(dir, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	info, err := st.Session(id)
+	if err != nil || info.Status != "interrupted" || info.EndedAt == nil {
+		t.Fatalf("after a crash: %+v %v", info, err)
+	}
+	path, _ := st.File(id)
+	if _, err := os.Stat(path + "-wal"); err == nil {
+		t.Error("an interrupted session's file still has a write-ahead log")
+	}
+	if next, _ := st.CreateSession("2", "bench", Config{Mode: "basic", ServoPeriodUs: 1000}, time.Now()); next != id+1 {
+		t.Errorf("next id %d after %d", next, id)
+	}
+}
+
+// TestStoreLegacy moves the sessions of an older single database (machine
+// list included) to files of their own and removes it.
+func TestStoreLegacy(t *testing.T) {
+	dir := t.TempDir()
+	legacy := filepath.Join(dir, "sampling.db")
+	old, err := sql.Open("sqlite", dsn(legacy, true))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, q := range []string{
+		`CREATE TABLE sessions (id INTEGER PRIMARY KEY, machine_id TEXT NOT NULL, machine_name TEXT NOT NULL,
+			started_at TEXT NOT NULL, ended_at TEXT, status TEXT NOT NULL, error TEXT NOT NULL DEFAULT '',
+			config TEXT NOT NULL, samples TEXT NOT NULL DEFAULT '[]')`,
+		`CREATE TABLE chunks (session_id INTEGER NOT NULL, channel INTEGER NOT NULL, first INTEGER NOT NULL,
+			count INTEGER NOT NULL, received_at TEXT NOT NULL, data BLOB NOT NULL, PRIMARY KEY (session_id, channel, first)) WITHOUT ROWID`,
+		`CREATE TABLE events (session_id INTEGER NOT NULL, time_us INTEGER NOT NULL, bits INTEGER NOT NULL, received_at TEXT NOT NULL)`,
+		`CREATE TABLE machines (id TEXT PRIMARY KEY, source TEXT NOT NULL, name TEXT NOT NULL, host TEXT NOT NULL,
+			port INTEGER NOT NULL, axes TEXT NOT NULL DEFAULT '[]', spindles TEXT NOT NULL DEFAULT '[]',
+			paths INTEGER NOT NULL DEFAULT 0, updated_at TEXT NOT NULL)`,
+		`INSERT INTO sessions VALUES (3, '2', 'bench', '2026-10-14T16:00:00+09:00', '2026-10-14T16:00:05+09:00', 'completed', '',
+			'{"mode":"basic","servoPeriodUs":1000,"channels":[{"kind":"servo","axis":1,"type":3,"label":"X"}]}', '[3]')`,
+		`INSERT INTO sessions VALUES (7, 'L1', 'lathe', '2026-10-14T17:00:00+09:00', NULL, 'running', '',
+			'{"mode":"basic","servoPeriodUs":1000,"channels":[{"kind":"servo","axis":1,"type":3,"label":"X"}]}', '[]')`,
+		`INSERT INTO chunks VALUES (3, 0, 0, 3, '2026-10-14T16:00:01+09:00', X'010002000300')`,
+		`INSERT INTO chunks VALUES (7, 0, 0, 1, '2026-10-14T17:00:01+09:00', X'0900')`,
+		`INSERT INTO events VALUES (3, 1000, 2, '2026-10-14T16:00:01+09:00')`,
+		`INSERT INTO machines VALUES ('2', 'hub', 'bench', '198.51.100.77', 8193, '["X1"]', '["S1"]', 2, '2026-10-14T12:00:00Z')`,
+	} {
+		if _, err := old.Exec(q); err != nil {
+			t.Fatal(err)
+		}
+	}
+	old.Close()
+
+	sessions := filepath.Join(dir, "sessions")
+	st, err := OpenStore(sessions, legacy)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	if _, err := os.Stat(legacy); err == nil {
+		t.Error("the old database is still there")
+	}
+	list, _ := st.Sessions("", 10)
+	if len(list) != 2 || list[0].ID != 7 || list[0].Status != "interrupted" || list[0].EndedAt == nil || list[1].ID != 3 || list[1].Events != 1 {
+		t.Fatalf("moved sessions %+v", list)
+	}
+	var b strings.Builder
+	if err := st.WriteCSV(&b, 3); err != nil || b.String() != "time_ms,X,trigger\n0.000,1,\n1.000,2,0x0002\n2.000,3,\n" {
+		t.Errorf("moved session 3 CSV %q %v", b.String(), err)
+	}
+	ms, synced, _ := st.takeOldMachines()
+	if len(ms) != 1 || ms[0].Host != "198.51.100.77" || synced.IsZero() {
+		t.Errorf("machines %+v %v", ms, synced)
+	}
+	if next, _ := st.CreateSession("2", "bench", Config{Mode: "basic", ServoPeriodUs: 1000}, time.Now()); next != 8 {
+		t.Errorf("next id %d, want 8", next)
+	}
+	// no session file holds a machine address
+	files, _ := filepath.Glob(filepath.Join(sessions, "*"))
+	for _, f := range files {
+		if b, _ := os.ReadFile(f); bytes.Contains(b, []byte("198.51.100.")) {
+			t.Errorf("%s holds a machine address", f)
+		}
+	}
+}
+
+func TestStoreLowDisk(t *testing.T) {
+	st, err := OpenStore(t.TempDir(), "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if st.lowDisk() != nil {
+		t.Error("minimum 0 stopped sampling")
+	}
+	st.SetMinFree(1 << 62) // more than any disk
+	if err := st.lowDisk(); err == nil || !strings.Contains(err.Error(), "disk almost full") {
+		t.Errorf("low disk: %v", err)
+	}
+	st.SetMinFree(1) // any disk has a byte
+	if err := st.lowDisk(); err != nil {
+		t.Errorf("1 byte minimum: %v", err)
+	}
+	if s := st.Storage(); s.Free == 0 || s.Total < s.Free {
+		t.Errorf("storage %+v", s)
+	}
+}
+
+func TestSize(t *testing.T) {
+	for text, want := range map[string]uint64{"1GB": 1 << 30, "500 MB": 500 << 20, "1.5gb": 3 << 29, "0": 0, "2048": 2048, "10KB": 10240} {
+		if n, err := ParseSize(text); err != nil || n != want {
+			t.Errorf("ParseSize(%q) = %d %v, want %d", text, n, err, want)
+		}
+	}
+	for _, bad := range []string{"", "lots", "-1GB", "1XB"} {
+		if _, err := ParseSize(bad); err == nil {
+			t.Errorf("ParseSize(%q) accepted", bad)
+		}
+	}
+	for n, want := range map[uint64]string{1 << 30: "1GB", 3 << 29: "1.5GB", 500 << 20: "500MB", 0: "0", 100: "100"} {
+		if got := FormatSize(n); got != want {
+			t.Errorf("FormatSize(%d) = %q, want %q", n, got, want)
+		}
 	}
 }
 

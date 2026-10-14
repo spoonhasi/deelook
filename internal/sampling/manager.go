@@ -59,6 +59,9 @@ func (m *Manager) Start(ctx context.Context, id string, cfg Config) (Status, err
 	if err := m.needLib(); err != nil {
 		return Status{}, err
 	}
+	if err := m.store.lowDisk(); err != nil {
+		return Status{}, err
+	}
 	if cfg.extended() && !m.lib.Extended() {
 		return Status{}, fmt.Errorf("%s has no cnc_sdt*2 calls (extended sampling)", m.lib.Path)
 	}

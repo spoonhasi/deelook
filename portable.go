@@ -21,6 +21,8 @@ import (
 	"strings"
 	"time"
 
+	"deelook/internal/sampling"
+
 	"github.com/BurntSushi/toml"
 )
 
@@ -87,15 +89,19 @@ var doubleClicked = runtime.GOOS == "windows" && len(os.Args) == 1
 // options are deelook's settings: command-line flags, which deelook.toml
 // sets by the same names.
 type options struct {
-	listen, hub, machine, lamps, fwlib, db *string
-	interval, timeout                      *time.Duration
-	open                                   *bool
+	listen, hub, machine, lamps, fwlib, data, db *string
+	interval, timeout                            *time.Duration
+	open                                         *bool
+	minFree                                      *uint64
 }
 
 // defineFlags defines the options on fs with their defaults, which
 // deelook.example.toml repeats (TestSettingsTemplate keeps them equal).
 func defineFlags(fs *flag.FlagSet) options {
+	minFree := uint64(1 << 30)
+	fs.Var(sizeValue{&minFree}, "minfree", "stop sampling when the data folder's disk has less free space than this (0: never)")
 	return options{
+		minFree:  &minFree,
 		listen:   fs.String("listen", ":8090", "address the web server listens on"),
 		hub:      fs.String("hub", "http://127.0.0.1:8080", "deemesh-hub base URL"),
 		machine:  fs.String("machine", "1", "machine shown when the URL names none (machine_id or machine_name)"),
@@ -103,9 +109,32 @@ func defineFlags(fs *flag.FlagSet) options {
 		timeout:  fs.Duration("timeout", 5*time.Second, "hub-side limit for one poll"),
 		lamps:    fs.String("lamps", "", "operator panel lamps read from the PMC, per machine_id: \"1=ncguide,13=ncguide\" (others follow machine-independent values)"),
 		fwlib:    fs.String("fwlib", "", "FOCAS2 library for sampling, of the executable's bitness (empty: Fwlib64.dll / libfwlib32.so* next to the executable)"),
-		db:       fs.String("db", "", "SQLite database for sampling sessions (empty: deelook-data/sampling.db next to the executable)"),
+		data:     fs.String("data", "", "folder for sampling data: sessions/ (one SQLite file each) and machines.json (empty: deelook-data next to the executable)"),
+		db:       fs.String("db", "", deprecated+"the single database of earlier builds; its folder is the data folder and its sessions move to files of their own"),
 		open:     fs.Bool("open", doubleClicked, "open the page in a browser once listening (default: when started by double-click on Windows)"),
 	}
+}
+
+// deprecated starts the usage of an option kept only so old settings files
+// still load.
+const deprecated = "deprecated: "
+
+// sizeValue is a byte count option written like "1GB".
+type sizeValue struct{ n *uint64 }
+
+func (v sizeValue) String() string {
+	if v.n == nil {
+		return ""
+	}
+	return sampling.FormatSize(*v.n)
+}
+
+func (v sizeValue) Set(s string) error {
+	n, err := sampling.ParseSize(s)
+	if err == nil {
+		*v.n = n
+	}
+	return err
 }
 
 // loadSettings sets flags of fs from a TOML settings file whose keys are
@@ -138,7 +167,7 @@ func loadSettings(fs *flag.FlagSet, path string) error {
 		if err != nil {
 			return fmt.Errorf("%s: %s: %v", path, key, err)
 		}
-		if (key == "db" || key == "fwlib") && value != "" && !filepath.IsAbs(value) {
+		if (key == "data" || key == "db" || key == "fwlib") && value != "" && !filepath.IsAbs(value) {
 			value = filepath.Join(filepath.Dir(path), value)
 		}
 		if err := fs.Set(key, value); err != nil {
@@ -151,7 +180,7 @@ func loadSettings(fs *flag.FlagSet, path string) error {
 // settingValue turns a TOML value into the text of its option.
 func settingValue(key string, v any) (string, error) {
 	switch key {
-	case "hub", "listen", "db", "fwlib", "interval", "timeout":
+	case "hub", "listen", "data", "db", "fwlib", "interval", "timeout", "minfree":
 		if s, ok := v.(string); ok {
 			return s, nil
 		}

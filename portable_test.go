@@ -89,15 +89,16 @@ func TestSettingsTemplate(t *testing.T) {
 	for name, def := range defaults {
 		f := fs.Lookup(name)
 		switch {
+		case strings.HasPrefix(f.Usage, deprecated): // kept for old files only
 		case name == "open": // "auto": left at its default, which depends on how deelook started
 			if set[name] {
 				t.Errorf("open set to %s, want auto", f.Value)
 			}
 		case !set[name]:
 			t.Errorf("the template does not write %s", name)
-		case name == "db": // relative to the file's folder = next to the executable, as main defaults it
-			if want := filepath.Join(dir, "deelook-data", "sampling.db"); *o.db != want {
-				t.Errorf("db %q, want %q", *o.db, want)
+		case name == "data": // relative to the file's folder = next to the executable, as main defaults it
+			if want := filepath.Join(dir, "deelook-data"); *o.data != want {
+				t.Errorf("data %q, want %q", *o.data, want)
 			}
 		case f.Value.String() != def:
 			t.Errorf("%s = %q in the template, default %q", name, f.Value, def)

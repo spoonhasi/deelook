@@ -1,6 +1,7 @@
 package sampling
 
 import (
+	"database/sql"
 	"encoding/binary"
 	"time"
 )
@@ -23,13 +24,21 @@ func (s *Store) View(id int64, fromUs, toUs int64, buckets int) (View, error) {
 	if err != nil {
 		return View{}, err
 	}
-	cfg := si.Config
+	var v View
+	err = s.withDB(id, func(db *sql.DB) (err error) {
+		v, err = view(db, si.Config, fromUs, toUs, buckets)
+		return err
+	})
+	return v, err
+}
+
+func view(db *sql.DB, cfg Config, fromUs, toUs int64, buckets int) (View, error) {
 	v := View{Channels: []LiveChannel{}, Events: []Event{}}
 
 	// how far each channel got: from the chunks, so running and interrupted
 	// sessions work too
 	got := make([]int64, len(cfg.Channels))
-	rows, err := s.db.Query(`SELECT channel, MAX(first + count) FROM chunks WHERE session_id = ? GROUP BY channel`, id)
+	rows, err := db.Query(`SELECT channel, MAX(first + count) FROM chunks GROUP BY channel`)
 	if err != nil {
 		return v, err
 	}
@@ -60,8 +69,8 @@ func (s *Store) View(id int64, fromUs, toUs int64, buckets int) (View, error) {
 			BucketUs: int(per * p), EndUs: (first + nb*per) * p, Min: make([]int32, nb), Max: make([]int32, nb)}
 		seen := make([]bool, nb)
 		signed, bits := cfg.Signed(i), ch.Kind == "pmcbit"
-		rows, err := s.db.Query(`SELECT first, data FROM chunks WHERE session_id = ? AND channel = ?
-			AND first < ? AND first + count > ? ORDER BY first`, id, i, last, first)
+		rows, err := db.Query(`SELECT first, data FROM chunks WHERE channel = ?
+			AND first < ? AND first + count > ? ORDER BY first`, i, last, first)
 		if err != nil {
 			return v, err
 		}
@@ -98,8 +107,8 @@ func (s *Store) View(id int64, fromUs, toUs int64, buckets int) (View, error) {
 		v.Channels = append(v.Channels, lc)
 	}
 
-	rows, err = s.db.Query(`SELECT time_us, bits, received_at FROM events WHERE session_id = ? AND time_us BETWEEN ? AND ?
-		ORDER BY time_us`, id, fromUs, toUs)
+	rows, err = db.Query(`SELECT time_us, bits, received_at FROM events WHERE time_us BETWEEN ? AND ?
+		ORDER BY time_us`, fromUs, toUs)
 	if err != nil {
 		return v, err
 	}

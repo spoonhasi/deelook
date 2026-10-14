@@ -21,8 +21,13 @@ machine = 1
 interval = "1s"
 timeout = "5s"
 
-# 수집 데이터 (SQLite). 상대 경로는 이 파일이 있는 폴더 기준
-db = "deelook-data/sampling.db"
+# 데이터 폴더. 상대 경로는 이 파일이 있는 폴더 기준
+#   sessions\   수집 한 건마다 SQLite 파일 하나 (넘겨줄 때는 그 파일만)
+#   machines.json  수집할 기계 목록과 IP
+data = "deelook-data"
+
+# 데이터 폴더가 있는 디스크의 남은 공간이 이보다 적으면 수집을 시작하지 않고, 수집 중이면 멈춤. "0" 이면 보지 않음
+minfree = "1GB"
 
 # FANUC FOCAS2 라이브러리 파일. "" 이면 deelook.exe 옆에서 찾음 (Windows Fwlib64.dll, 리눅스 libfwlib32.so*)
 # 다른 곳에 있으면 예: fwlib = 'C:\FANUC\Fwlib64.dll'  (같은 폴더에 fwlibe64.dll 도 있어야 함)

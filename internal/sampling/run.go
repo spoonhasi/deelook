@@ -17,6 +17,7 @@ const (
 	flushEvery = 500 * time.Millisecond // database write interval
 	readPoints = 8192                   // buffer per channel and read (multiple of 8)
 	liveWindow = 4 * time.Second        // kept in memory for the live view
+	diskEvery  = 5 * time.Second        // free disk space check interval
 	maxCalls   = 40                     // FOCAS calls kept for the browser
 	maxEvents  = 200                    // trigger marks kept for the browser
 )
@@ -210,12 +211,17 @@ func (r *run) loop() {
 	// buffer overflows (EW_BUFFER) if it is not read in time
 	batches := make(chan batch, 64)
 	var writeErr error
+	writeFailed := make(chan error, 1) // the loop stops at once: reading on would only lose data
 	writerDone := make(chan struct{})
 	go func() {
 		defer close(writerDone)
 		for b := range batches {
-			if err := r.store.Add(id, b.chunks, b.events); err != nil && writeErr == nil {
+			if writeErr != nil {
+				continue // drained, not written
+			}
+			if err := r.store.Add(id, b.chunks, b.events); err != nil {
 				writeErr = err
+				writeFailed <- err
 				log.Printf("sampling session %d: write: %v", id, err)
 			}
 		}
@@ -234,14 +240,28 @@ func (r *run) loop() {
 		ms            float64
 		slow, healthy int // consecutive seconds behind / keeping up
 	}{at: time.Now()}
-	var failure error
+	var failure, lowDisk error
 	finished, stopping := false, false // finished: the CNC took all points
+	lastDiskCheck := time.Now()
 
 	for {
 		select {
 		case <-r.stop:
 			stopping = true
+		case err := <-writeFailed:
+			failure = fmt.Errorf("saving the samples failed, so sampling stopped: %w", err)
 		case <-tick.C:
+		}
+		if failure != nil {
+			break
+		}
+		// a disk running full stops the session in good order, before
+		// writes fail (and the PC with them)
+		if !stopping && time.Since(lastDiskCheck) >= diskEvery {
+			lastDiskCheck = time.Now()
+			if lowDisk = r.store.lowDisk(); lowDisk != nil {
+				stopping = true
+			}
 		}
 		t0 := time.Now()
 		var stat int16 = 1
@@ -342,6 +362,8 @@ func (r *run) loop() {
 		status, errText = "failed", failure.Error()
 	case finished:
 		status = "completed"
+	case lowDisk != nil:
+		errText = lowDisk.Error()
 	}
 	r.mu.Lock()
 	r.state, r.err, r.ended = status, errText, time.Now()

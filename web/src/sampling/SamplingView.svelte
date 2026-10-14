@@ -19,6 +19,7 @@
     type HubState,
     type OneShotResult,
     type SessionInfo,
+    type Storage,
     type Status,
     type TypedKind,
     type Types,
@@ -294,7 +295,22 @@
   async function loadSessions() {
     if (!machineId) return
     try {
-      sessions = await api.sessions(machineId)
+      ;[sessions, storage] = await Promise.all([api.sessions(machineId), api.storage().catch(() => storage)])
+    } catch (e) {
+      message = String((e as Error).message)
+    }
+  }
+
+  // the data folder's disk, refreshed with the session list
+  let storage = $state<Storage | null>(null)
+  const lowDisk = $derived(!!storage && storage.minFree > 0 && storage.free > 0 && storage.free < storage.minFree)
+
+  async function deleteSession(s: SessionInfo) {
+    if (!confirm(`세션 #${s.id} (${s.file}, ${size(s.size)})을 지울까요? 파일이 지워지고 되돌릴 수 없습니다.`)) return
+    try {
+      await api.deleteSession(s.id)
+      if (viewing?.id === s.id) viewing = null
+      await loadSessions()
     } catch (e) {
       message = String((e as Error).message)
     }
@@ -511,8 +527,18 @@
   const clock = (iso: string) => new Date(iso).toLocaleTimeString('ko-KR', { hour12: false })
   const fmt = (n: number) => Math.round(n).toLocaleString('ko-KR')
   function bytes(samples: number[] = []): string {
-    const b = samples.reduce((a, n) => a + n, 0) * 2
-    return b > 1e9 ? `${(b / 1e9).toFixed(2)} GB` : b > 1e6 ? `${(b / 1e6).toFixed(1)} MB` : `${(b / 1e3).toFixed(0)} KB`
+    return size(samples.reduce((a, n) => a + n, 0) * 2)
+  }
+  // units of 1024, as Windows shows disk sizes
+  function size(b: number): string {
+    const u = [
+      ['TB', 2 ** 40],
+      ['GB', 2 ** 30],
+      ['MB', 2 ** 20],
+      ['KB', 2 ** 10],
+    ] as const
+    for (const [name, n] of u) if (b >= n) return `${(b / n).toFixed(b / n < 10 ? 1 : 0)} ${name}`
+    return `${b} B`
   }
   function seconds(us: number): string {
     const s = us / 1e6
@@ -772,7 +798,7 @@
         </ul>
       {/if}
       <div class="actions">
-        <button class="primary" onclick={start} disabled={busy || active || !machineId || !!machine?.error || problems.length > 0 || !libOk}>수집 시작</button>
+        <button class="primary" onclick={start} disabled={busy || active || !machineId || !!machine?.error || problems.length > 0 || !libOk || lowDisk}>수집 시작</button>
         <button class="danger" onclick={stop} disabled={busy || !active}>수집 종료</button>
       </div>
       {#if message}{@render err(message)}{/if}
@@ -913,11 +939,19 @@
 
   <section class="card">
     <h2>기록된 세션</h2>
+    {#if storage}
+      <p class="hint storage" class:warn={lowDisk}>
+        수집 한 건 = 파일 하나 (넘겨줄 때는 "DB"로 받은 그 파일만) · 세션 파일 {storage.sessions}개 {size(storage.used)}
+        {#if storage.total}· 남은 공간 {size(storage.free)} / {size(storage.total)}{/if}
+        {#if storage.minFree}· {size(storage.minFree)}보다 적으면 수집을 멈춥니다{/if}
+        {#if lowDisk}<br />⚠ 남은 공간이 기준보다 적어 새 수집을 시작할 수 없습니다. 지난 세션을 지우거나 deelook.toml의 minfree를 바꾸세요.{/if}
+      </p>
+    {/if}
     {#if sessions.length}
       <div class="scroll">
         <table class="sessions">
           <thead>
-            <tr><th>#</th><th>시작</th><th>길이</th><th>방식</th><th>채널</th><th>샘플/채널</th><th>트리거</th><th>상태</th><th></th></tr>
+            <tr><th>#</th><th>시작</th><th>길이</th><th>방식</th><th>채널</th><th>샘플/채널</th><th>트리거</th><th>크기</th><th>상태</th><th></th></tr>
           </thead>
           <tbody>
             {#each sessions as s (s.id)}
@@ -929,10 +963,15 @@
                 <td class="labels">{s.config.channels.map((c) => (c.kind === 'pmcbit' ? (c.signals ?? []).join(' ') : c.label)).join(', ')}</td>
                 <td>{s.samples?.length ? fmt(s.samples[0]) : ''}</td>
                 <td>{s.events || ''}</td>
+                <td class="num">{size(s.size)}</td>
                 <td><span class="badge {s.status}" title={s.error}>{STATE[s.status] ?? s.status}</span></td>
                 <td class="links">
                   <button class="link" onclick={() => (viewing = s)}>보기</button>
-                  {#if s.status !== 'running'}<a href={api.csvUrl(s.id)} download>CSV</a>{/if}
+                  {#if s.status !== 'running'}
+                    <a href={api.csvUrl(s.id)} download title="표로 (엑셀은 104만 행까지)">CSV</a>
+                    <a href={api.dbUrl(s.id)} download title="이 세션의 SQLite 파일 그대로: {s.file}">DB</a>
+                    <button class="link danger" onclick={() => deleteSession(s)}>삭제</button>
+                  {/if}
                 </td>
               </tr>
             {/each}
@@ -1269,6 +1308,15 @@
   }
   td.links {
     white-space: nowrap;
+  }
+  td.links a {
+    margin-right: 8px;
+  }
+  button.link.danger {
+    color: #ff8a80;
+  }
+  .storage.warn {
+    color: #ffb77c;
   }
   button.link {
     border: none;

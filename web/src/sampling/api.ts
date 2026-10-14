@@ -136,6 +136,18 @@ export interface SessionInfo {
   config: Config
   samples: number[]
   events: number
+  file: string // the session's SQLite file name
+  size: number // its size in bytes
+}
+
+/** The data folder's disk: free space, the session files, the minimum before sampling stops. */
+export interface Storage {
+  dir: string
+  free: number
+  total: number
+  used: number
+  sessions: number
+  minFree: number
 }
 
 export interface LiveChannel {
@@ -203,4 +215,7 @@ export const api = {
   view: (id: number, fromUs = 0, toUs = 0) =>
     get<View>(`/api/sampling/sessions/${id}/view?from=${Math.round(fromUs)}&to=${Math.round(toUs)}&buckets=600`),
   csvUrl: (id: number) => `/api/sampling/sessions/${id}/csv`,
+  dbUrl: (id: number) => `/api/sampling/sessions/${id}/db`,
+  deleteSession: (id: number) => post<{ ok: boolean }>(`/api/sampling/sessions/${id}`, {}, 'DELETE'),
+  storage: () => get<Storage>('/api/sampling/storage'),
 }
