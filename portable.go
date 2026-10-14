@@ -19,6 +19,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/BurntSushi/toml"
 )
@@ -55,11 +56,36 @@ func writeSettingsTemplate(path string) bool {
 // with no arguments.
 var doubleClicked = runtime.GOOS == "windows" && len(os.Args) == 1
 
-// loadSettings sets flags from a TOML settings file whose keys are the
-// option names, lamps being a table (machine_id = "ncguide"). Relative db
-// and fwlib paths are taken from the file's folder. A missing file is no
-// error; an unknown key or a value of the wrong kind is.
-func loadSettings(path string) error {
+// options are deelook's settings: command-line flags, which deelook.toml
+// sets by the same names.
+type options struct {
+	listen, hub, machine, lamps, fwlib, db *string
+	interval, timeout                      *time.Duration
+	open                                   *bool
+}
+
+// defineFlags defines the options on fs with their defaults, which
+// deelook.example.toml repeats (TestSettingsTemplate keeps them equal).
+func defineFlags(fs *flag.FlagSet) options {
+	return options{
+		listen:   fs.String("listen", ":8090", "address the web server listens on"),
+		hub:      fs.String("hub", "http://127.0.0.1:8080", "deemesh-hub base URL"),
+		machine:  fs.String("machine", "1", "machine shown when the URL names none (machine_id or machine_name)"),
+		interval: fs.Duration("interval", time.Second, "time between polls of one screen"),
+		timeout:  fs.Duration("timeout", 5*time.Second, "hub-side limit for one poll"),
+		lamps:    fs.String("lamps", "", "operator panel lamps read from the PMC, per machine_id: \"1=ncguide,13=ncguide\" (others follow machine-independent values)"),
+		fwlib:    fs.String("fwlib", "", "FOCAS2 library for sampling, of the executable's bitness (empty: Fwlib64.dll / libfwlib32.so* next to the executable)"),
+		db:       fs.String("db", "", "SQLite database for sampling sessions (empty: deelook-data/sampling.db next to the executable)"),
+		open:     fs.Bool("open", doubleClicked, "open the page in a browser once listening (default: when started by double-click on Windows)"),
+	}
+}
+
+// loadSettings sets flags of fs from a TOML settings file whose keys are
+// the option names, lamps being a table (machine_id = "ncguide") and open
+// also "auto" (its default). Relative db and fwlib paths are taken from the
+// file's folder. A missing file is no error; an unknown key or a value of
+// the wrong kind is.
+func loadSettings(fs *flag.FlagSet, path string) error {
 	raw, err := os.ReadFile(path)
 	if errors.Is(err, os.ErrNotExist) {
 		return nil
@@ -77,6 +103,9 @@ func loadSettings(path string) error {
 	}
 	sort.Strings(keys)
 	for _, key := range keys {
+		if key == "open" && settings[key] == "auto" {
+			continue // the default: when started by double-click
+		}
 		value, err := settingValue(key, settings[key])
 		if err != nil {
 			return fmt.Errorf("%s: %s: %v", path, key, err)
@@ -84,7 +113,7 @@ func loadSettings(path string) error {
 		if (key == "db" || key == "fwlib") && value != "" && !filepath.IsAbs(value) {
 			value = filepath.Join(filepath.Dir(path), value)
 		}
-		if err := flag.Set(key, value); err != nil {
+		if err := fs.Set(key, value); err != nil {
 			return fmt.Errorf("%s: %s: %v", path, key, err)
 		}
 	}
@@ -111,7 +140,7 @@ func settingValue(key string, v any) (string, error) {
 		if b, ok := v.(bool); ok {
 			return strconv.FormatBool(b), nil
 		}
-		return "", errors.New("want true or false")
+		return "", errors.New(`want true, false or "auto"`)
 	case "lamps":
 		table, ok := v.(map[string]any)
 		if !ok {

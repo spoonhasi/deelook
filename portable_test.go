@@ -11,15 +11,8 @@ import (
 )
 
 func TestLoadSettings(t *testing.T) {
-	fs := flag.CommandLine
-	flag.CommandLine = flag.NewFlagSet("test", flag.ContinueOnError)
-	defer func() { flag.CommandLine = fs }()
-	hub := flag.String("hub", "http://127.0.0.1:8080", "")
-	machine := flag.String("machine", "1", "")
-	interval := flag.Duration("interval", time.Second, "")
-	db := flag.String("db", "", "")
-	lamps := flag.String("lamps", "", "")
-	open := flag.Bool("open", true, "")
+	fs := flag.NewFlagSet("test", flag.ContinueOnError)
+	o := defineFlags(fs)
 
 	dir := t.TempDir()
 	path := filepath.Join(dir, settingsName)
@@ -40,59 +33,77 @@ open = false
 13 = "ncguide"
 1 = "ncguide"
 `)
-	if err := loadSettings(path); err != nil {
+	if err := loadSettings(fs, path); err != nil {
 		t.Fatal(err)
 	}
-	if *hub != "http://10.0.0.5:8080" || *machine != "13" || *interval != 500*time.Millisecond || *open {
-		t.Errorf("hub %q machine %q interval %v open %v", *hub, *machine, *interval, *open)
+	if *o.hub != "http://10.0.0.5:8080" || *o.machine != "13" || *o.interval != 500*time.Millisecond || *o.open {
+		t.Errorf("hub %q machine %q interval %v open %v", *o.hub, *o.machine, *o.interval, *o.open)
 	}
-	if *lamps != "1=ncguide,13=ncguide" {
-		t.Errorf("lamps %q", *lamps)
+	if *o.lamps != "1=ncguide,13=ncguide" {
+		t.Errorf("lamps %q", *o.lamps)
 	}
-	if *db != filepath.Join(dir, `data\s.db`) {
-		t.Errorf("db %q: relative paths follow the file's folder", *db)
+	if *o.db != filepath.Join(dir, `data\s.db`) {
+		t.Errorf("db %q: relative paths follow the file's folder", *o.db)
 	}
 	// the command line, parsed after the file, wins
-	if err := flag.CommandLine.Parse([]string{"-hub", "http://other:8080"}); err != nil || *hub != "http://other:8080" {
-		t.Errorf("command line: %q %v", *hub, err)
+	if err := fs.Parse([]string{"-hub", "http://other:8080"}); err != nil || *o.hub != "http://other:8080" {
+		t.Errorf("command line: %q %v", *o.hub, err)
 	}
 
 	for text, want := range map[string]string{
 		"nosuch = 1\n":            "unknown setting",
 		"hub = 8080\n":            "want a string",
-		"open = \"yes\"\n":        "want true or false",
+		"open = \"yes\"\n":        `want true, false or "auto"`,
 		"lamps = \"1=ncguide\"\n": "want a table",
 		"interval = \"soon\"\n":   "interval",
 		"hub = \"http://x\n":      "line 1",
 	} {
 		write(text)
-		if err := loadSettings(path); err == nil || !strings.Contains(err.Error(), want) {
+		if err := loadSettings(fs, path); err == nil || !strings.Contains(err.Error(), want) {
 			t.Errorf("%q: %v, want an error about %q", text, err, want)
 		}
 	}
-	if err := loadSettings(filepath.Join(dir, "missing.toml")); err != nil {
+	if err := loadSettings(fs, filepath.Join(dir, "missing.toml")); err != nil {
 		t.Errorf("a missing file: %v", err)
 	}
 }
 
+// TestSettingsTemplate checks that the deelook.toml written on first start
+// holds the values deelook uses without it: every option, at its default.
 func TestSettingsTemplate(t *testing.T) {
-	fs := flag.CommandLine
-	flag.CommandLine = flag.NewFlagSet("test", flag.ContinueOnError)
-	defer func() { flag.CommandLine = fs }()
-	for _, name := range []string{"hub", "listen", "machine", "interval", "timeout", "db", "fwlib", "lamps"} {
-		flag.String(name, "", "")
-	}
-	flag.Bool("open", false, "")
+	fs := flag.NewFlagSet("test", flag.ContinueOnError)
+	o := defineFlags(fs)
+	defaults := map[string]string{}
+	fs.VisitAll(func(f *flag.Flag) { defaults[f.Name] = f.DefValue })
 
-	path := filepath.Join(t.TempDir(), settingsName)
+	dir := t.TempDir()
+	path := filepath.Join(dir, settingsName)
 	if !writeSettingsTemplate(path) {
 		t.Fatal("no template written")
 	}
-	// all commented out: it loads and changes nothing
-	if err := loadSettings(path); err != nil {
+	if err := loadSettings(fs, path); err != nil {
 		t.Fatal(err)
 	}
-	flag.Visit(func(f *flag.Flag) { t.Errorf("template sets %s", f.Name) })
+	set := map[string]bool{}
+	fs.Visit(func(f *flag.Flag) { set[f.Name] = true })
+	for name, def := range defaults {
+		f := fs.Lookup(name)
+		switch {
+		case name == "open": // "auto": left at its default, which depends on how deelook started
+			if set[name] {
+				t.Errorf("open set to %s, want auto", f.Value)
+			}
+		case !set[name]:
+			t.Errorf("the template does not write %s", name)
+		case name == "db": // relative to the file's folder = next to the executable, as main defaults it
+			if want := filepath.Join(dir, "deelook-data", "sampling.db"); *o.db != want {
+				t.Errorf("db %q, want %q", *o.db, want)
+			}
+		case f.Value.String() != def:
+			t.Errorf("%s = %q in the template, default %q", name, f.Value, def)
+		}
+	}
+
 	// a file already there stays as it is
 	const mine = "hub = \"http://x:8080\"\n"
 	if err := os.WriteFile(path, []byte(mine), 0o644); err != nil {
@@ -103,16 +114,6 @@ func TestSettingsTemplate(t *testing.T) {
 	}
 	if b, _ := os.ReadFile(path); string(b) != mine {
 		t.Errorf("settings file changed: %q", b)
-	}
-	// and every setting the template mentions is one deelook knows
-	for _, line := range strings.Split(string(settingsTemplate), "\n") {
-		line = strings.TrimSpace(strings.TrimPrefix(line, "#"))
-		name, _, ok := strings.Cut(line, " = ")
-		if ok && !strings.ContainsAny(name, " []") && !strings.HasPrefix(name, "1") {
-			if flag.Lookup(name) == nil {
-				t.Errorf("template mentions unknown setting %q", name)
-			}
-		}
 	}
 }
 

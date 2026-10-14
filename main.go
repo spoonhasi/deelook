@@ -35,15 +35,9 @@ import (
 )
 
 func main() {
-	listen := flag.String("listen", ":8090", "address the web server listens on")
-	hubURL := flag.String("hub", "http://127.0.0.1:8080", "deemesh-hub base URL")
-	defMachine := flag.String("machine", "1", "machine shown when the URL names none (machine_id or machine_name)")
-	interval := flag.Duration("interval", time.Second, "time between polls of one screen")
-	timeout := flag.Duration("timeout", 5*time.Second, "hub-side limit for one poll")
-	lampFlag := flag.String("lamps", "", "operator panel lamps read from the PMC, per machine_id: \"1=ncguide,13=ncguide\" (others follow machine-independent values)")
-	fwlib := flag.String("fwlib", "", "FOCAS2 library for sampling, of the executable's bitness (default: Fwlib64.dll / libfwlib32.so* next to the executable)")
-	dbPath := flag.String("db", "", "SQLite database for sampling sessions (default: deelook-data/sampling.db next to the executable)")
-	open := flag.Bool("open", doubleClicked, "open the page in a browser once listening (default: when started by double-click on Windows)")
+	o := defineFlags(flag.CommandLine)
+	listen, hubURL, defMachine, interval, timeout := o.listen, o.hub, o.machine, o.interval, o.timeout
+	lampFlag, fwlib, dbPath, open := o.lamps, o.fwlib, o.db, o.open
 	// deelook.toml next to the executable first, so the command line wins;
 	// where there is none, one with the defaults is put there to edit
 	exeDir := executableDir()
@@ -51,7 +45,7 @@ func main() {
 	if writeSettingsTemplate(settingsPath) {
 		log.Printf("wrote %s with the default settings, to edit", settingsPath)
 	}
-	if err := loadSettings(settingsPath); err != nil {
+	if err := loadSettings(flag.CommandLine, settingsPath); err != nil {
 		fatal("%v", err)
 	}
 	flag.Parse()
