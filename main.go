@@ -100,9 +100,11 @@ func main() {
 		fatal("%v", err)
 	}
 	defer store.Close()
-	// the machine list (with CNC addresses) stays with the settings, out of
-	// the database that is handed around
-	machines, err := sampling.OpenMachines(filepath.Join(exeDir, machinesName), store)
+	// the machine list (with CNC addresses) sits beside the database, in
+	// its own file: the database alone is what gets handed around
+	machinesPath := filepath.Join(filepath.Dir(*dbPath), machinesName)
+	moveFile(filepath.Join(exeDir, machinesName), machinesPath) // where deelook kept it for a while
+	machines, err := sampling.OpenMachines(machinesPath, store)
 	if err != nil {
 		fatal("%v", err)
 	}
