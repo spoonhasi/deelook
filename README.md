@@ -167,6 +167,29 @@ deelook의 수집 코드는 다른 프로그램에 옮겨 쓰기 쉽게 나뉘�
 
 ## 실행
 
+### Windows: 폴더째 들고 다니며 실행 (포터블)
+
+설치가 없습니다. `deelook.exe` 하나에 화면(웹 UI)과 SQLite까지 들어 있고, 같은 폴더에 두는 것은 이것뿐입니다.
+
+```
+deelook\
+  deelook.exe
+  Fwlib64.dll, fwlibe64.dll, fwlib30i64.dll, fwlib0iD64.dll, fwlibNCG64.dll, fwlib0DN64.dll   ← FANUC FOCAS2 (직접 구해 넣음)
+  deelook.conf          ← 설정 (없으면 기본값, deelook.conf.example 참고)
+  deelook-data\         ← 수집 데이터 (처음 실행할 때 생김)
+```
+
+- **`deelook.exe`를 더블클릭**하면 시작하고 브라우저가 열립니다. 검은 창(로그)을 닫으면 끝납니다.
+  라이브러리가 없는 등 시작하지 못하면 그 창에 이유를 띄우고 Enter를 누를 때까지 기다립니다.
+- 설정은 `deelook.conf`에 `이름 = 값`으로 적습니다(예: `hub = http://192.168.0.10:8080`). 이름은 아래 옵션과 같고,
+  명령줄에 준 값이 이깁니다. `db`, `fwlib`의 상대 경로는 그 폴더 기준입니다.
+- 수집 데이터는 어디서 실행하든 `deelook.exe` 옆 `deelook-data\`에 쌓입니다. 폴더를 통째로 옮기면 데이터도 따라갑니다.
+- 처음 실행할 때 Windows 방화벽이 허용을 물을 수 있습니다(`listen = :8090`이 다른 PC의 접속도 받기 때문).
+  이 PC에서만 쓸 거면 `listen = 127.0.0.1:8090`.
+- 인터넷에서 받은 서명 없는 실행 파일이라 SmartScreen이 막으면 "추가 정보 → 실행"을 누릅니다.
+
+### 명령줄
+
 ```bash
 bin/deelook-windows-amd64/deelook.exe -hub http://127.0.0.1:8080 -machine 1 -lamps 1=ncguide
 ```
@@ -182,7 +205,8 @@ bin/deelook-windows-amd64/deelook.exe -hub http://127.0.0.1:8080 -machine 1 -lam
 | `-timeout` | `5s` | 한 번 읽을 때 허브 쪽 제한 시간 |
 | `-lamps` | (없음) | PMC로 램프를 읽을 기계: `1=ncguide,13=ncguide` |
 | `-fwlib` | 실행 파일 옆 `Fwlib64.dll` / `libfwlib32.so*` | FOCAS2 라이브러리 파일 (실행 파일과 같은 비트) |
-| `-db` | `deelook-data/sampling.db` | 수집 데이터 SQLite 파일 |
+| `-db` | 실행 파일 옆 `deelook-data/sampling.db` | 수집 데이터 SQLite 파일 |
+| `-open` | 더블클릭으로 실행했을 때만 | 시작하면 브라우저로 화면 열기 |
 
 - 보는 브라우저가 몇 개든 (기계, 화면)마다 허브를 한 번만 읽습니다. 화면을 바꾸면 그 화면에 필요한 값만 읽고, 아무도 보지 않으면 5초 뒤에 읽기를 멈춥니다.
 - 허브와 다른 PC에서 돌리면 그 PC의 IP를 허브 설정 `allowed_ips_read`에 넣어야 합니다.
@@ -206,7 +230,7 @@ Node(npm)와 Go가 필요합니다.
 ## 개발
 
 ```bash
-go run . -lamps 1=ncguide -fwlib fwlib/windows-x64/Fwlib64.dll   # 서버 (:8090)
+go run . -lamps 1=ncguide -fwlib fwlib/windows-x64/Fwlib64.dll -db deelook-data/sampling.db   # 서버 (:8090)
 cd web && npm run dev                                                    # 화면 (Vite, /api 요청은 :8090으로 넘김)
 ```
 

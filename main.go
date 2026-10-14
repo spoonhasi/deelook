@@ -42,12 +42,21 @@ func main() {
 	timeout := flag.Duration("timeout", 5*time.Second, "hub-side limit for one poll")
 	lampFlag := flag.String("lamps", "", "operator panel lamps read from the PMC, per machine_id: \"1=ncguide,13=ncguide\" (others follow machine-independent values)")
 	fwlib := flag.String("fwlib", "", "FOCAS2 library for sampling, of the executable's bitness (default: Fwlib64.dll / libfwlib32.so* next to the executable)")
-	dbPath := flag.String("db", "deelook-data/sampling.db", "SQLite database for sampling sessions")
+	dbPath := flag.String("db", "", "SQLite database for sampling sessions (default: deelook-data/sampling.db next to the executable)")
+	open := flag.Bool("open", doubleClicked, "open the page in a browser once listening (default: when started by double-click on Windows)")
+	// deelook.conf next to the executable first, so the command line wins
+	exeDir := executableDir()
+	if err := loadConf(filepath.Join(exeDir, confName)); err != nil {
+		fatal("%v", err)
+	}
 	flag.Parse()
+	if *dbPath == "" {
+		*dbPath = filepath.Join(exeDir, "deelook-data", "sampling.db")
+	}
 
 	lamps, err := parseLamps(*lampFlag)
 	if err != nil {
-		log.Fatal(err)
+		fatal("%v", err)
 	}
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
@@ -79,15 +88,15 @@ func main() {
 
 	libPath := *fwlib
 	if libPath == "" {
-		libPath = focas.FindLibrary(executableDir())
+		libPath = focas.FindLibrary(exeDir)
 	}
 	lib, err := focas.Load(libPath)
 	if err != nil {
-		log.Fatalf("FOCAS2 library (needed for sampling; -fwlib; not in the repository, see fwlib/README.md): %v", err)
+		fatal("FOCAS2 library (needed for sampling; -fwlib; not in the repository, see fwlib/README.md): %v", err)
 	}
 	store, err := sampling.OpenStore(*dbPath)
 	if err != nil {
-		log.Fatal(err)
+		fatal("%v", err)
 	}
 	defer store.Close()
 	sampler := sampling.NewManager(hc, store, lib)
@@ -133,8 +142,19 @@ func main() {
 		_ = srv.Shutdown(shut)
 	}()
 
-	log.Printf("deelook on %s (hub %s, poll every %s)", *listen, *hubURL, *interval)
-	if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+	ln, err := net.Listen("tcp", *listen)
+	if err != nil {
+		fatal("%v", err)
+	}
+	url := pageURL(ln.Addr())
+	log.Printf("deelook on %s (hub %s, poll every %s): open %s", *listen, *hubURL, *interval, url)
+	if doubleClicked {
+		log.Printf("closing this window stops deelook")
+	}
+	if *open {
+		openBrowser(url)
+	}
+	if err := srv.Serve(ln); err != nil && !errors.Is(err, http.ErrServerClosed) {
 		log.Fatal(err)
 	}
 }
