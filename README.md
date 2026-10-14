@@ -176,14 +176,14 @@ deelook의 수집 코드는 다른 프로그램에 옮겨 쓰기 쉽게 나뉘�
 deelook\
   deelook.exe
   Fwlib64.dll, fwlibe64.dll   ← FANUC FOCAS2 (직접 구해 넣음, 이더넷 연결은 이 둘이면 됨)
-  deelook.toml          ← 설정 (없으면 모두 기본값)
+  deelook.toml          ← 설정 (없으면 처음 실행할 때 기본값으로 생김)
   deelook-data\         ← 수집 데이터 (처음 실행할 때 생김)
 ```
 
 - **`deelook.exe`를 더블클릭**하면 시작하고 브라우저가 열립니다. 검은 창(로그)을 닫으면 끝납니다.
   라이브러리가 없는 등 시작하지 못하면 그 창에 이유를 띄우고 Enter를 누를 때까지 기다립니다.
-- 설정은 `deelook.toml`(TOML)에 적습니다. 빌드 폴더에 모든 설정과 기본값을 주석으로 적어 둔 파일이 들어 있으니, 바꿀 줄의
-  `#`만 지우고 고치면 됩니다(원본: [`deelook.example.toml`](deelook.example.toml)). 이름은 아래 옵션과 같고, 명령줄에 준 값이
+- 설정은 `deelook.toml`(TOML)에 적습니다. 없으면 deelook이 시작할 때 모든 설정과 기본값을 주석으로 적은 파일을 만들어 두니,
+  바꿀 줄의 `#`만 지우고 고치면 됩니다(내용: [`deelook.example.toml`](deelook.example.toml)). 지워도 다음 실행 때 다시 생깁니다. 이름은 아래 옵션과 같고, 명령줄에 준 값이
   이깁니다. `db`, `fwlib`의 상대 경로는 그 폴더 기준입니다.
 
   ```toml

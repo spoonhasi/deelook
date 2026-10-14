@@ -75,6 +75,47 @@ open = false
 	}
 }
 
+func TestSettingsTemplate(t *testing.T) {
+	fs := flag.CommandLine
+	flag.CommandLine = flag.NewFlagSet("test", flag.ContinueOnError)
+	defer func() { flag.CommandLine = fs }()
+	for _, name := range []string{"hub", "listen", "machine", "interval", "timeout", "db", "fwlib", "lamps"} {
+		flag.String(name, "", "")
+	}
+	flag.Bool("open", false, "")
+
+	path := filepath.Join(t.TempDir(), settingsName)
+	if !writeSettingsTemplate(path) {
+		t.Fatal("no template written")
+	}
+	// all commented out: it loads and changes nothing
+	if err := loadSettings(path); err != nil {
+		t.Fatal(err)
+	}
+	flag.Visit(func(f *flag.Flag) { t.Errorf("template sets %s", f.Name) })
+	// a file already there stays as it is
+	const mine = "hub = \"http://x:8080\"\n"
+	if err := os.WriteFile(path, []byte(mine), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if writeSettingsTemplate(path) {
+		t.Error("wrote over a settings file")
+	}
+	if b, _ := os.ReadFile(path); string(b) != mine {
+		t.Errorf("settings file changed: %q", b)
+	}
+	// and every setting the template mentions is one deelook knows
+	for _, line := range strings.Split(string(settingsTemplate), "\n") {
+		line = strings.TrimSpace(strings.TrimPrefix(line, "#"))
+		name, _, ok := strings.Cut(line, " = ")
+		if ok && !strings.ContainsAny(name, " []") && !strings.HasPrefix(name, "1") {
+			if flag.Lookup(name) == nil {
+				t.Errorf("template mentions unknown setting %q", name)
+			}
+		}
+	}
+}
+
 // BOM is what Notepad may put at the start of a UTF-8 file.
 const BOM = "\xef\xbb\xbf"
 

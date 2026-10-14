@@ -6,6 +6,7 @@ package main
 
 import (
 	"bufio"
+	_ "embed"
 	"errors"
 	"flag"
 	"fmt"
@@ -24,6 +25,31 @@ import (
 
 // settingsName is the settings file read from the executable's folder.
 const settingsName = "deelook.toml"
+
+// settingsTemplate is a settings file with every setting at its default,
+// commented out, written where none is.
+//
+//go:embed deelook.example.toml
+var settingsTemplate []byte
+
+// writeSettingsTemplate puts the template at path unless a file is there.
+// It reports whether it wrote one; a folder it cannot write to is no error
+// (deelook runs on its defaults).
+func writeSettingsTemplate(path string) bool {
+	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o644)
+	if err != nil {
+		return false
+	}
+	_, err = f.Write(settingsTemplate)
+	if cerr := f.Close(); err == nil {
+		err = cerr
+	}
+	if err != nil {
+		os.Remove(path)
+		return false
+	}
+	return true
+}
 
 // doubleClicked guesses that deelook was started from Explorer: on Windows,
 // with no arguments.

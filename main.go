@@ -44,9 +44,14 @@ func main() {
 	fwlib := flag.String("fwlib", "", "FOCAS2 library for sampling, of the executable's bitness (default: Fwlib64.dll / libfwlib32.so* next to the executable)")
 	dbPath := flag.String("db", "", "SQLite database for sampling sessions (default: deelook-data/sampling.db next to the executable)")
 	open := flag.Bool("open", doubleClicked, "open the page in a browser once listening (default: when started by double-click on Windows)")
-	// deelook.toml next to the executable first, so the command line wins
+	// deelook.toml next to the executable first, so the command line wins;
+	// where there is none, one with the defaults is put there to edit
 	exeDir := executableDir()
-	if err := loadSettings(filepath.Join(exeDir, settingsName)); err != nil {
+	settingsPath := filepath.Join(exeDir, settingsName)
+	if writeSettingsTemplate(settingsPath) {
+		log.Printf("wrote %s with the default settings, to edit", settingsPath)
+	}
+	if err := loadSettings(settingsPath); err != nil {
 		fatal("%v", err)
 	}
 	flag.Parse()
