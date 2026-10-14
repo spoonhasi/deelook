@@ -11,8 +11,8 @@ CNC의 HMI 화면을 웹 브라우저에 다시 그리고, FANUC 서보·주축 
 
 | 부분 | 보여 주는 것 | 어떻게 |
 |---|---|---|
-| **HMI 화면** (`#/`) | CNC 공통 인터페이스로 제어기 화면을 만드는 법 | 값은 전부 **deemesh-hub**에서 읽습니다(읽기 전용, 기계에 쓰는 경로 없음). deemesh는 FANUC·SIEMENS·Mitsubishi 등 여러 제어기를 같은 주소 체계로 다루는 공통 인터페이스입니다(무료). |
-| **시계열 수집** (`#/sampling`) | deemesh가 다루지 않는 FANUC 고속 샘플링을 **직접 만드는 법** | deelook이 FOCAS2 라이브러리를 직접 불러 CNC에 연결합니다. 서보·주축 데이터, PMC 신호, O·N 번호, 트리거까지 `cnc_sdt*`의 모든 기능을 화면에서 써 보고 SQLite에 저장합니다. |
+| **HMI 화면** (`/`) | CNC 공통 인터페이스로 제어기 화면을 만드는 법 | 값은 전부 **deemesh-hub**에서 읽습니다(읽기 전용, 기계에 쓰는 경로 없음). deemesh는 FANUC·SIEMENS·Mitsubishi 등 여러 제어기를 같은 주소 체계로 다루는 공통 인터페이스입니다(무료). |
+| **시계열 수집** (`/sampling`) | deemesh가 다루지 않는 FANUC 고속 샘플링을 **직접 만드는 법** | deelook이 FOCAS2 라이브러리를 직접 불러 CNC에 연결합니다. 서보·주축 데이터, PMC 신호, O·N 번호, 트리거까지 `cnc_sdt*`의 모든 기능을 화면에서 써 보고 SQLite에 저장합니다. |
 
 **무엇을 쓰면 되나**
 
@@ -226,7 +226,7 @@ deelook\
 bin/deelook-windows-amd64/deelook.exe -hub http://127.0.0.1:8080 -machine 1 -lamps 1=ncguide
 ```
 
-브라우저에서 `http://<서버 주소>:8090/` 을 엽니다. 다른 기계는 `/?machine=2` 또는 `/?machine=bench-31i`.
+브라우저에서 `http://<서버 주소>:8090/`(HMI 화면) 또는 `http://<서버 주소>:8090/sampling`(시계열 수집)을 엽니다. 다른 기계의 HMI는 `/?machine=2` 또는 `/?machine=bench-31i`. 예전 주소 `/#/sampling`도 그대로 열립니다.
 
 | 옵션 | 기본값 | 설명 |
 |---|---|---|
