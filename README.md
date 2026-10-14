@@ -175,17 +175,26 @@ deelook의 수집 코드는 다른 프로그램에 옮겨 쓰기 쉽게 나뉘�
 deelook\
   deelook.exe
   Fwlib64.dll, fwlibe64.dll, fwlib30i64.dll, fwlib0iD64.dll, fwlibNCG64.dll, fwlib0DN64.dll   ← FANUC FOCAS2 (직접 구해 넣음)
-  deelook.conf          ← 설정 (없으면 기본값, deelook.conf.example 참고)
+  deelook.toml          ← 설정 (없으면 모두 기본값)
   deelook-data\         ← 수집 데이터 (처음 실행할 때 생김)
 ```
 
 - **`deelook.exe`를 더블클릭**하면 시작하고 브라우저가 열립니다. 검은 창(로그)을 닫으면 끝납니다.
   라이브러리가 없는 등 시작하지 못하면 그 창에 이유를 띄우고 Enter를 누를 때까지 기다립니다.
-- 설정은 `deelook.conf`에 `이름 = 값`으로 적습니다(예: `hub = http://192.168.0.10:8080`). 이름은 아래 옵션과 같고,
-  명령줄에 준 값이 이깁니다. `db`, `fwlib`의 상대 경로는 그 폴더 기준입니다.
+- 설정은 `deelook.toml`(TOML)에 적습니다. 빌드 폴더에 모든 설정과 기본값을 주석으로 적어 둔 파일이 들어 있으니, 바꿀 줄의
+  `#`만 지우고 고치면 됩니다(원본: [`deelook.example.toml`](deelook.example.toml)). 이름은 아래 옵션과 같고, 명령줄에 준 값이
+  이깁니다. `db`, `fwlib`의 상대 경로는 그 폴더 기준입니다.
+
+  ```toml
+  hub = "http://192.168.0.10:8080"
+  listen = "127.0.0.1:8090"
+
+  [lamps]
+  1 = "ncguide"
+  ```
 - 수집 데이터는 어디서 실행하든 `deelook.exe` 옆 `deelook-data\`에 쌓입니다. 폴더를 통째로 옮기면 데이터도 따라갑니다.
-- 처음 실행할 때 Windows 방화벽이 허용을 물을 수 있습니다(`listen = :8090`이 다른 PC의 접속도 받기 때문).
-  이 PC에서만 쓸 거면 `listen = 127.0.0.1:8090`.
+- 처음 실행할 때 Windows 방화벽이 허용을 물을 수 있습니다(기본 `listen = ":8090"`이 다른 PC의 접속도 받기 때문).
+  이 PC에서만 쓸 거면 `listen = "127.0.0.1:8090"`.
 - 인터넷에서 받은 서명 없는 실행 파일이라 SmartScreen이 막으면 "추가 정보 → 실행"을 누릅니다.
 
 ### 명령줄
@@ -203,7 +212,7 @@ bin/deelook-windows-amd64/deelook.exe -hub http://127.0.0.1:8080 -machine 1 -lam
 | `-machine` | `1` | 주소에 machine이 없을 때 보여줄 기계 |
 | `-interval` | `1s` | 한 화면을 읽는 간격 |
 | `-timeout` | `5s` | 한 번 읽을 때 허브 쪽 제한 시간 |
-| `-lamps` | (없음) | PMC로 램프를 읽을 기계: `1=ncguide,13=ncguide` |
+| `-lamps` | (없음) | PMC로 램프를 읽을 기계: `1=ncguide,13=ncguide` (`deelook.toml`에서는 `[lamps]` 표) |
 | `-fwlib` | 실행 파일 옆 `Fwlib64.dll` / `libfwlib32.so*` | FOCAS2 라이브러리 파일 (실행 파일과 같은 비트) |
 | `-db` | 실행 파일 옆 `deelook-data/sampling.db` | 수집 데이터 SQLite 파일 |
 | `-open` | 더블클릭으로 실행했을 때만 | 시작하면 브라우저로 화면 열기 |

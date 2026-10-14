@@ -1,6 +1,6 @@
 package main
 
-// Running deelook from a folder without installing: settings in deelook.conf
+// Running deelook from a folder without installing: settings in deelook.toml
 // next to the executable, data next to it too, and a double-clicked
 // deelook.exe opens the browser and keeps its window open on a startup error.
 
@@ -15,48 +15,105 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"sort"
+	"strconv"
 	"strings"
+
+	"github.com/BurntSushi/toml"
 )
 
-// confName is the settings file read from the executable's folder.
-const confName = "deelook.conf"
+// settingsName is the settings file read from the executable's folder.
+const settingsName = "deelook.toml"
 
 // doubleClicked guesses that deelook was started from Explorer: on Windows,
 // with no arguments.
 var doubleClicked = runtime.GOOS == "windows" && len(os.Args) == 1
 
-// loadConf sets flags from a settings file: one "name = value" per line,
-// names as on the command line, # comments. Relative db and fwlib paths are
-// taken from the file's folder. A missing file is no error.
-func loadConf(path string) error {
-	f, err := os.Open(path)
+// loadSettings sets flags from a TOML settings file whose keys are the
+// option names, lamps being a table (machine_id = "ncguide"). Relative db
+// and fwlib paths are taken from the file's folder. A missing file is no
+// error; an unknown key or a value of the wrong kind is.
+func loadSettings(path string) error {
+	raw, err := os.ReadFile(path)
 	if errors.Is(err, os.ErrNotExist) {
 		return nil
 	}
 	if err != nil {
 		return err
 	}
-	defer f.Close()
-	sc := bufio.NewScanner(f)
-	for n := 1; sc.Scan(); n++ {
-		line := strings.TrimSpace(strings.TrimPrefix(sc.Text(), "\uFEFF")) // Notepad may save a BOM
-		if line == "" || strings.HasPrefix(line, "#") {
-			continue
+	var settings map[string]any
+	if _, err := toml.Decode(strings.TrimPrefix(string(raw), "\uFEFF"), &settings); err != nil { // Notepad may save a BOM
+		return fmt.Errorf("%s: %v", path, err)
+	}
+	keys := make([]string, 0, len(settings))
+	for k := range settings {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	for _, key := range keys {
+		value, err := settingValue(key, settings[key])
+		if err != nil {
+			return fmt.Errorf("%s: %s: %v", path, key, err)
 		}
-		name, value, ok := strings.Cut(line, "=")
-		name = strings.TrimLeft(strings.TrimSpace(name), "-")
-		value = strings.Trim(strings.TrimSpace(value), `"`)
-		if !ok || name == "" {
-			return fmt.Errorf("%s line %d: want name = value", path, n)
-		}
-		if (name == "db" || name == "fwlib") && value != "" && !filepath.IsAbs(value) {
+		if (key == "db" || key == "fwlib") && value != "" && !filepath.IsAbs(value) {
 			value = filepath.Join(filepath.Dir(path), value)
 		}
-		if err := flag.Set(name, value); err != nil {
-			return fmt.Errorf("%s line %d: %s: %v", path, n, name, err)
+		if err := flag.Set(key, value); err != nil {
+			return fmt.Errorf("%s: %s: %v", path, key, err)
 		}
 	}
-	return sc.Err()
+	return nil
+}
+
+// settingValue turns a TOML value into the text of its option.
+func settingValue(key string, v any) (string, error) {
+	switch key {
+	case "hub", "listen", "db", "fwlib", "interval", "timeout":
+		if s, ok := v.(string); ok {
+			return s, nil
+		}
+		return "", errors.New(`want a string in quotes, like "1s" or "http://127.0.0.1:8080"`)
+	case "machine":
+		switch x := v.(type) {
+		case string:
+			return x, nil
+		case int64:
+			return strconv.FormatInt(x, 10), nil
+		}
+		return "", errors.New("want a machine_id or a machine name")
+	case "open":
+		if b, ok := v.(bool); ok {
+			return strconv.FormatBool(b), nil
+		}
+		return "", errors.New("want true or false")
+	case "lamps":
+		table, ok := v.(map[string]any)
+		if !ok {
+			return "", errors.New(`want a table: [lamps] then lines like 1 = "ncguide"`)
+		}
+		ids := make([]string, 0, len(table))
+		for id := range table {
+			ids = append(ids, id)
+		}
+		sort.Slice(ids, func(i, j int) bool { // machine ids in number order
+			a, errA := strconv.Atoi(ids[i])
+			b, errB := strconv.Atoi(ids[j])
+			if errA == nil && errB == nil {
+				return a < b
+			}
+			return ids[i] < ids[j]
+		})
+		var items []string
+		for _, id := range ids {
+			p, ok := table[id].(string)
+			if !ok {
+				return "", fmt.Errorf(`machine %s: want a profile name in quotes, like "ncguide"`, id)
+			}
+			items = append(items, id+"="+p)
+		}
+		return strings.Join(items, ","), nil
+	}
+	return "", errors.New("unknown setting")
 }
 
 // pageURL is where a browser on this PC finds deelook listening on addr.

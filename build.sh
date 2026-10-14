@@ -2,8 +2,8 @@
 # Builds the frontend (web/dist), embeds it into deelook, and puts each
 # target in its own folder under bin/ together with the FANUC FOCAS2
 # library it loads for sampling, when that is in fwlib/ (it is not in the
-# repository: see fwlib/README.md), and deelook.conf.example. Copy a folder
-# and run: deelook keeps its settings (deelook.conf) and data
+# repository: see fwlib/README.md), and a deelook.toml to edit. Copy a
+# folder and run: deelook keeps its settings (deelook.toml) and data
 # (deelook-data/) in that folder.
 # Needs Node (npm) and Go on PATH.
 #
@@ -27,13 +27,14 @@ for target in windows/amd64 linux/386 linux/arm; do
   arch=${target#*/}
   dir="bin/deelook-$os-$arch"
   # replace only what the build puts there: a folder in use keeps its
-  # deelook.conf and deelook-data/
+  # deelook.toml and deelook-data/
   mkdir -p "$dir"
   rm -f "$dir/deelook" "$dir/deelook.exe" "$dir"/*.dll "$dir"/libfwlib32.so*
   exe="$dir/deelook"
   [ "$os" = windows ] && exe="$exe.exe"
   CGO_ENABLED=0 GOOS=$os GOARCH=$arch GOARM=7 go build -trimpath -ldflags "-s -w" -o "$exe" .
-  cp deelook.conf.example "$dir/"
+  # the settings file, all defaults commented out; never over one in use
+  [ -e "$dir/deelook.toml" ] || cp deelook.example.toml "$dir/deelook.toml"
   case $target in
     windows/amd64) libs=(fwlib/windows-x64/*.dll) ;;
     linux/386) libs=(fwlib/linux-x86/libfwlib32.so*) ;;
