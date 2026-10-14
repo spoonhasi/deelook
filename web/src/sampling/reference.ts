@@ -81,7 +81,7 @@ const EXPLAIN: Explain[] = [
   { code: 'EW_SOCKET', text: '통신이 끊김 (네트워크, CNC 전원)' },
   { code: 'EW_HANDLE', text: '연결 핸들이 유효하지 않음 (연결이 끊겼거나, 리눅스에서 다른 스레드의 핸들)' },
   { code: 'EW_PROTOCOL', text: '통신 데이터 오류' },
-  { code: 'EW_NODLL', text: '기종별 DLL이 없음 (Fwlib64.dll 옆에 fwlib30i64.dll 등이 있어야 함)' },
+  { code: 'EW_NODLL', text: 'Fwlib64.dll이 불러오는 DLL이 같은 폴더에 없음 (이더넷 연결은 fwlibe64.dll)' },
   { code: 'EW_BUSY', text: 'CNC가 바쁨 — 잠시 뒤 다시' },
 ]
 

@@ -21,10 +21,11 @@ func FindLibrary(dir string) string {
 }
 
 // Load opens the 64-bit FOCAS2 DLL at path. The DLLs it loads in turn by
-// name at run time (fwlibe64.dll, and one per CNC series such as
-// fwlib30i64.dll; missing ones give EW_NODLL on connect) are looked up in the
-// same folder: it is registered with SetDllDirectory, since such loads
-// otherwise search the executable's folder.
+// name at run time (fwlibe64.dll for Ethernet; a missing one gives EW_NODLL
+// on connect) are looked up in the same folder: it is registered with
+// SetDllDirectory, since such loads otherwise search the executable's
+// folder. Fwlib64.dll 7.3 and fwlibe64.dll alone reach a 0i-F and a 30i-B
+// over Ethernet: the per-series DLLs (fwlib30i64.dll...) are not needed.
 func Load(path string) (*Lib, error) {
 	abs, err := filepath.Abs(path)
 	if err != nil {

@@ -10,7 +10,7 @@
 # Sampling (cnc_sdt*) is required, so only targets with a FOCAS2 library
 # that has it are built:
 #
-#   windows-amd64   Fwlib64.dll 7.3 and the series DLLs
+#   windows-amd64   Fwlib64.dll 7.3 and fwlibe64.dll (Ethernet)
 #   linux-386       32-bit (also on 64-bit Linux with 32-bit libc, libstdc++)
 #   linux-arm       32-bit ARM
 set -euo pipefail
@@ -36,7 +36,7 @@ for target in windows/amd64 linux/386 linux/arm; do
   # the settings file, all defaults commented out; never over one in use
   [ -e "$dir/deelook.toml" ] || cp deelook.example.toml "$dir/deelook.toml"
   case $target in
-    windows/amd64) libs=(fwlib/windows-x64/*.dll) ;;
+    windows/amd64) libs=(fwlib/windows-x64/Fwlib64.dll fwlib/windows-x64/fwlibe64.dll) ;;
     linux/386) libs=(fwlib/linux-x86/libfwlib32.so*) ;;
     linux/arm) libs=(fwlib/linux-arm/libfwlib32.so*) ;;
   esac

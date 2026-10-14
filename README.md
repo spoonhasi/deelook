@@ -118,14 +118,15 @@ FOCAS2 라이브러리는 시작할 때 불러옵니다 (`-fwlib`, 없으면 실
 
 | OS | 필요한 파일 (`-fwlib`로 지정, 기본은 실행 파일 옆) | 상태 |
 |---|---|---|
-| Windows 64비트 | `Fwlib64.dll` 7.3, `fwlibe64.dll`, 기종별 DLL(`fwlib30i64.dll`, `fwlib0iD64.dll`, `fwlibNCG64.dll`, `fwlib0DN64.dll`)을 한 폴더에 | 기본·확장·현재값 모두, 31i 벤치·NC Guide에서 확인 |
+| Windows 64비트 | `Fwlib64.dll` 7.3과 `fwlibe64.dll`을 한 폴더에 (이더넷 연결은 이 두 파일이면 됨) | 기본·확장·현재값 모두, 31i 벤치·NC Guide에서 확인 |
 | Linux 32비트 | `libfwlib32.so.1.0.2`(x86) / ARM은 `1.0.1` | 기본·현재값 확인. **확장(`cnc_sdt*2`)은 이 라이브러리에 없어** 화면에서 꺼짐 |
 
 라이브러리는 FANUC의 것이라 **저장소에 없습니다.** 구해서 [`fwlib/`](fwlib/README.md)의 플랫폼별 폴더에 넣으면(파일 이름·시험한 판·해시는 그 문서)
 `build.sh`가 실행 파일 옆에 복사합니다.
 
-- Windows는 `Fwlib64.dll` 7.3.0.1 + `fwlibe64.dll` 5.3.0.1(포트까지 연결을 가르는 판)에 기종별 DLL 4.9.0.1을 함께 둔 구성으로 시험했습니다.
-  기종별 DLL이 없으면 연결할 때 `EW_NODLL(-15)`입니다.
+- Windows는 `Fwlib64.dll` 7.3.0.1 + `fwlibe64.dll` 5.3.0.1(포트까지 연결을 가르는 판)로 시험했습니다. 이더넷 연결에는 이 두 파일이면
+  되고, 기종별 DLL(`fwlib30i64.dll` 등)은 없어도 NC Guide 0i-F와 30i-B에서 기본·확장·현재값이 모두 됐습니다.
+  `fwlibe64.dll`이 같은 폴더에 없으면 연결할 때 `EW_NODLL(-15)`입니다.
 - Linux 판마다 다릅니다 (`nm -D` 로 확인, 2026-10-14):
 
   | 판 | 비트 | `cnc_sdt*` |
@@ -156,7 +157,7 @@ deelook의 수집 코드는 다른 프로그램에 옮겨 쓰기 쉽게 나뉘�
 | 파일 | 볼 것 |
 |---|---|
 | [`internal/focas/focas.go`](internal/focas/focas.go) | FOCAS2 구조체를 메모리 배치 그대로 옮긴 것(`IDBSDTCHAN` 6바이트, `IDBSDTCHAN2` 102바이트, `PMC_DATA`, `TRG_DATA`, `ODBSD`), 각 `cnc_sdt*` 호출, 오류 상세 번호(`cnc_getdtailerr`). 배치는 [`focas_test.go`](internal/focas/focas_test.go)가 검사합니다. |
-| [`internal/focas/load_windows.go`](internal/focas/load_windows.go), [`load_linux.go`](internal/focas/load_linux.go) | cgo 없이 실행 중에 DLL/.so를 불러오는 법. Windows는 기종별 DLL을 찾게 `SetDllDirectory`, Linux는 핸들을 쓰는 스레드마다 `cnc_startupprocess`. |
+| [`internal/focas/load_windows.go`](internal/focas/load_windows.go), [`load_linux.go`](internal/focas/load_linux.go) | cgo 없이 실행 중에 DLL/.so를 불러오는 법. Windows는 `Fwlib64.dll`이 이름으로 불러오는 `fwlibe64.dll`을 찾게 `SetDllDirectory`, Linux는 핸들을 쓰는 스레드마다 `cnc_startupprocess`. |
 | [`internal/sampling/config.go`](internal/sampling/config.go) | 채널 설정: 주기·시프트를 `shift`에 넣는 법, PMC 주소 해석, 미리 막을 수 있는 규칙, PMC 비트 채널을 맨 뒤로 보내는 것. |
 | [`internal/sampling/run.go`](internal/sampling/run.go) | 수집 순서(정리 → 설정 → 시작 → 읽기 반복 → 끝). 핸들은 OS 스레드 하나에 고정하고, 읽기는 쉬지 않고, DB 쓰기는 다른 고루틴으로 넘깁니다(늦게 읽으면 `EW_BUFFER`). 끝낼 때 `cnc_sdtendsmpl`·`cnc_sdtendsmpl2`·`cnc_sdtcancelsmpl` 중 무엇을 부르는지. |
 | [`internal/sampling/types.go`](internal/sampling/types.go) | 서보 0~46·주축 0~21 데이터 종류와 단위 표. |
@@ -174,7 +175,7 @@ deelook의 수집 코드는 다른 프로그램에 옮겨 쓰기 쉽게 나뉘�
 ```
 deelook\
   deelook.exe
-  Fwlib64.dll, fwlibe64.dll, fwlib30i64.dll, fwlib0iD64.dll, fwlibNCG64.dll, fwlib0DN64.dll   ← FANUC FOCAS2 (직접 구해 넣음)
+  Fwlib64.dll, fwlibe64.dll   ← FANUC FOCAS2 (직접 구해 넣음, 이더넷 연결은 이 둘이면 됨)
   deelook.toml          ← 설정 (없으면 모두 기본값)
   deelook-data\         ← 수집 데이터 (처음 실행할 때 생김)
 ```
