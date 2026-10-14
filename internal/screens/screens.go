@@ -45,3 +45,13 @@ func Get(id string) (*Def, bool) {
 	d, ok := registry[id]
 	return d, ok
 }
+
+// For is the screen drawn for machines of a protocol, nil when none is.
+func For(protocol string) *Def {
+	for _, d := range registry {
+		if d.Accepts(protocol) {
+			return d
+		}
+	}
+	return nil
+}

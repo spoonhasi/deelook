@@ -18,13 +18,15 @@ _실행 중인 deelook의 `/help`에서는 여기에 허브 연결, FOCAS2 라�
 | 주소 | 내용 |
 |---|---|
 | `/`, `/help` | 이 도움말 (브라우저에는 HTML, 그 밖에는 Markdown. `/help.md`는 늘 Markdown) |
-| `/hmi` | HMI 화면. `/hmi?machine=2` 또는 `/hmi?machine=bench-31i`처럼 기계를 고릅니다(없으면 설정의 `machine`) |
+| `/hmi` | HMI 화면. 아래쪽 메뉴나 `/hmi?machine=2`, `/hmi?machine=bench-31i`로 기계를 고릅니다(없으면 설정의 `machine`, 기본은 번호가 가장 작은 FANUC 기계) |
 | `/sampling` | 시계열 수집 |
 
 ## HMI 화면 (`/hmi`)
 
 - deemesh-hub에서 값을 읽어 FANUC 0i-F 화면(NC Guide 기준 640×480)과 조작반을 그립니다. **읽기 전용**이라 기계에 값을 쓰거나
   키를 보내는 경로가 없습니다.
+- 기계는 화면 아래 메뉴에서 고릅니다(주소의 `?machine=`도 따라 바뀜). 주소에 없으면 설정의 `machine`이고, 기본값 `"auto"`는
+  허브 목록에서 번호가 가장 작은 FANUC 기계입니다.
 - 화면은 웹의 MDI 키(POS, PROG, OFS/SET, MESSAGE, GRAPH, SYSTEM, PAGE↑↓)와 화면 아래 소프트키로 고릅니다. 고른 화면은 그
   브라우저에만 적용되고 기계 화면은 바뀌지 않습니다.
 - 되는 화면: POS(ABSOLUTE, RELATIVE, ALL), PROG(PROGRAM), OFS/SET(OFFSET, WORK), MESSAGE(ALARM, MESSAGE), 상태줄
@@ -58,7 +60,7 @@ _실행 중인 deelook의 `/help`에서는 여기에 허브 연결, FOCAS2 라�
 |---|---|---|
 | `hub` | `"http://127.0.0.1:8080"` | deemesh-hub 주소 |
 | `listen` | `":8090"` | 웹 서버 주소. `"127.0.0.1:8090"`이면 이 PC에서만 |
-| `machine` | `1` | `/hmi`에 기계가 없을 때 보여 줄 기계 |
+| `machine` | `"auto"` | `/hmi` 주소에 기계가 없을 때 보여 줄 기계: 번호(`1`), 이름(`"bench-31i"`), `"auto"`(번호가 가장 작은 FANUC 기계) |
 | `interval`, `timeout` | `"1s"`, `"5s"` | HMI 화면을 허브에서 읽는 간격, 한 번 읽을 때 허브 쪽 제한 시간 |
 | `data` | `"deelook-data"` | 데이터 폴더 (상대 경로는 실행 파일 옆) |
 | `minfree` | `"1GB"` | 이보다 디스크 공간이 적으면 수집 중단 (`"0"`: 보지 않음) |
@@ -86,7 +88,7 @@ _실행 중인 deelook의 `/help`에서는 여기에 허브 연결, FOCAS2 라�
 
 | 요청 | 내용 |
 |---|---|
-| `GET /api/machines` | 허브의 기계 목록(`machine_id`, `machine_name`, `protocol`)과 기본 기계 |
+| `GET /api/machines` | 허브의 기계 목록(`machine_id`, `machine_name`, `protocol`, 그 기계를 그리는 화면 `screen`)과 설정의 `machine`(`default`) |
 | `GET /api/screens/fanuc/stream?machine=1&view=pos` | 화면 값의 Server-Sent Events. `view`: `pos`, `prog`, `offset`(`&page=N`), `work`, `alarm`, `message` |
 
 **시계열 수집**

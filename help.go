@@ -36,10 +36,11 @@ const statusLine = "_실행 중인 deelook의 `/help`에서는 여기에 허브 
 // FOCAS2 library, the machines, sampling and the disk. Machine addresses
 // stay out of it, as out of every page.
 type help struct {
-	hub     *hub.Client
-	hubURL  string
-	sampler *sampling.Manager
-	dataDir string
+	hub        *hub.Client
+	hubURL     string
+	defMachine string // the machine setting: what /hmi shows without ?machine=
+	sampler    *sampling.Manager
+	dataDir    string
 }
 
 var markdown = goldmark.New(
@@ -91,6 +92,16 @@ func (h *help) status(ctx context.Context) string {
 	} else {
 		line("deemesh-hub %s: 연결됨, 기계 %d대", code(h.hubURL), len(ms))
 	}
+	hmi, _ := screens.Get("fanuc")
+	shown := "" // the machine_id /hmi shows without ?machine=
+	if hubErr == nil {
+		if m, err := pickMachine(ms, hmi, h.defMachine); err != nil {
+			line("`/hmi`가 기본으로 보여 줄 기계 (설정 `machine = %q`): **없음** (%s)", h.defMachine, code(err.Error()))
+		} else {
+			shown = strconv.Itoa(m.ID)
+			line("`/hmi`가 기본으로 보여 줄 기계 (설정 `machine = %q`): %s %s", h.defMachine, shown, code(m.Name))
+		}
+	}
 
 	s := h.sampler.Summary(ms, hubErr)
 	switch {
@@ -141,13 +152,15 @@ func (h *help) status(ctx context.Context) string {
 		}
 		fmt.Fprintf(&b, "| %s | %s | %s | %s | %s |\n", cell(id), cell(name), from, pages, cell(axes))
 	}
-	hmi, _ := screens.Get("fanuc")
 	slices.SortFunc(ms, func(a, b hub.Machine) int { return a.ID - b.ID })
 	for _, m := range ms { // the hub's list as read just now
 		id := strconv.Itoa(m.ID)
 		var pages []string
 		if hmi != nil && hmi.Accepts(m.Protocol) {
 			pages = append(pages, "`/hmi?machine="+id+"`")
+			if id == shown {
+				pages[0] += " (`/hmi`의 기본)"
+			}
 		}
 		if mc, ok := sampled[id]; ok && mc.Source == "hub" {
 			pages = append(pages, "`/sampling`")

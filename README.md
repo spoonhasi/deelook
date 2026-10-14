@@ -223,7 +223,7 @@ deelook\
 ### 명령줄
 
 ```bash
-bin/deelook-windows-amd64/deelook.exe -hub http://127.0.0.1:8080 -machine 1 -lamps 1=ncguide
+bin/deelook-windows-amd64/deelook.exe -hub http://127.0.0.1:8080 -machine 2 -lamps 1=ncguide
 ```
 
 브라우저에서 `http://<서버 주소>:8090/`을 엽니다.
@@ -231,7 +231,7 @@ bin/deelook-windows-amd64/deelook.exe -hub http://127.0.0.1:8080 -machine 1 -lam
 | 주소 | 내용 |
 |---|---|
 | `/`, `/help` | 도움말: 이 프로그램이 무엇이고 어떻게 쓰는지, 지금 상태(허브 연결, FOCAS2 라이브러리, 기계, 수집, 디스크), 설정, HTTP API. 브라우저에는 HTML, 그 밖(curl, 에이전트)에는 Markdown(`/help.md`는 늘 Markdown). 내용은 [`help.md`](help.md) |
-| `/hmi` | HMI 화면. 다른 기계는 `/hmi?machine=2` 또는 `/hmi?machine=bench-31i` |
+| `/hmi` | HMI 화면. 기계는 화면 아래 메뉴에서 고르거나(주소도 따라 바뀜) 주소에 `/hmi?machine=2`, `/hmi?machine=bench-31i`. 없으면 `-machine` |
 | `/sampling` | 시계열 수집 |
 
 예전 주소도 열립니다: `/?machine=2`는 `/hmi?machine=2`로, `/#/sampling`은 `/sampling`으로 넘어갑니다.
@@ -240,7 +240,7 @@ bin/deelook-windows-amd64/deelook.exe -hub http://127.0.0.1:8080 -machine 1 -lam
 |---|---|---|
 | `-listen` | `:8090` | 웹 서버 주소 |
 | `-hub` | `http://127.0.0.1:8080` | deemesh-hub 주소 |
-| `-machine` | `1` | 주소에 machine이 없을 때 보여줄 기계 |
+| `-machine` | `auto` | 주소에 machine이 없을 때 HMI 화면에 보여 줄 기계: machine_id, 이름, 또는 `auto`(허브 목록에서 번호가 가장 작은 FANUC 기계) |
 | `-interval` | `1s` | 한 화면을 읽는 간격 |
 | `-timeout` | `5s` | 한 번 읽을 때 허브 쪽 제한 시간 |
 | `-lamps` | (없음) | PMC로 램프를 읽을 기계: `1=ncguide,13=ncguide` (`deelook.toml`에서는 `[lamps]` 표) |

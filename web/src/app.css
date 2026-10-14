@@ -121,6 +121,15 @@ footer .notice {
   white-space: nowrap;
   max-width: 70vw;
 }
+footer select {
+  font: inherit;
+  color: inherit;
+  background: #2d2d2d;
+  border: 1px solid #555;
+  border-radius: 4px;
+  padding: 2px 6px;
+  max-width: 70vw;
+}
 footer button {
   font: inherit;
   color: inherit;

@@ -75,7 +75,7 @@ func defineFlags(fs *flag.FlagSet) options {
 		minFree:  &minFree,
 		listen:   fs.String("listen", ":8090", "address the web server listens on"),
 		hub:      fs.String("hub", "http://127.0.0.1:8080", "deemesh-hub base URL"),
-		machine:  fs.String("machine", "1", "machine shown when the URL names none (machine_id or machine_name)"),
+		machine:  fs.String("machine", "auto", "machine the HMI shows when the URL names none: machine_id, machine_name, or auto (the hub's lowest-numbered machine it has a screen for)"),
 		interval: fs.Duration("interval", time.Second, "time between polls of one screen"),
 		timeout:  fs.Duration("timeout", 5*time.Second, "hub-side limit for one poll"),
 		lamps:    fs.String("lamps", "", "operator panel lamps read from the PMC, per machine_id: \"1=ncguide,13=ncguide\" (others follow machine-independent values)"),
@@ -163,7 +163,7 @@ func settingValue(key string, v any) (string, error) {
 		case int64:
 			return strconv.FormatInt(x, 10), nil
 		}
-		return "", errors.New("want a machine_id or a machine name")
+		return "", errors.New(`want a machine_id, a machine name or "auto"`)
 	case "open":
 		if b, ok := v.(bool); ok {
 			return strconv.FormatBool(b), nil

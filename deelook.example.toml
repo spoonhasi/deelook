@@ -14,8 +14,9 @@ hub = "http://127.0.0.1:8080"
 #   "127.0.0.1:8090"  이 PC에서만
 listen = ":8090"
 
-# 주소에 machine 이 없을 때 HMI 화면에 보여 줄 기계 (deemesh-hub의 machine_id 또는 이름)
-machine = 1
+# 주소에 machine 이 없을 때 HMI 화면에 보여 줄 기계: deemesh-hub의 machine_id(1) 또는 이름("bench-31i"),
+# "auto" 면 허브 목록에서 번호가 가장 작은 FANUC 기계
+machine = "auto"
 
 # HMI 화면을 허브에서 읽는 간격, 한 번 읽을 때 허브 쪽 제한 시간
 interval = "1s"

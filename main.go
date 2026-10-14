@@ -90,10 +90,14 @@ func main() {
 			ID       int    `json:"machine_id"`
 			Name     string `json:"machine_name"`
 			Protocol string `json:"protocol"`
+			Screen   string `json:"screen,omitempty"` // the HMI drawn for it, if any
 		}
 		out := make([]machine, len(ms))
 		for i, m := range ms {
-			out[i] = machine{m.ID, m.Name, m.Protocol}
+			out[i] = machine{ID: m.ID, Name: m.Name, Protocol: m.Protocol}
+			if def := screens.For(m.Protocol); def != nil {
+				out[i].Screen = def.ID
+			}
 		}
 		writeJSON(w, map[string]any{"default": *defMachine, "machines": out})
 	})
@@ -153,7 +157,7 @@ func main() {
 		serveStream(w, r, broker, def, id, view, opt)
 	})
 	// the manual at / and /help; the app draws /hmi and /sampling
-	manual := &help{hub: hc, hubURL: *hubURL, sampler: sampler, dataDir: dataDir}
+	manual := &help{hub: hc, hubURL: *hubURL, defMachine: *defMachine, sampler: sampler, dataDir: dataDir}
 	mux.Handle("GET /{$}", manual)
 	mux.Handle("GET /help", manual)
 	mux.Handle("GET /help.md", manual)
@@ -189,23 +193,45 @@ func main() {
 	}
 }
 
-// resolveMachine turns a machine_id or machine_name into the machine_id,
-// and refuses machines the screen is not drawn for. Only machines on the
-// hub's list are ever polled.
+// resolveMachine turns a machine_id, machine_name or "auto" into the
+// machine_id. Only machines on the hub's list are ever polled.
 func resolveMachine(ctx context.Context, hc *hub.Client, def *screens.Def, machine string) (string, error) {
 	ms, err := hc.Machines(ctx)
 	if err != nil {
 		return "", err
 	}
+	m, err := pickMachine(ms, def, machine)
+	if err != nil {
+		return "", err
+	}
+	return strconv.Itoa(m.ID), nil
+}
+
+// pickMachine finds a machine_id or machine_name on the hub's list, or for
+// "auto" the lowest-numbered machine the screen is drawn for, and refuses
+// machines it is not drawn for.
+func pickMachine(ms []hub.Machine, def *screens.Def, machine string) (hub.Machine, error) {
+	if machine == "auto" {
+		var pick *hub.Machine
+		for i, m := range ms {
+			if def.Accepts(m.Protocol) && (pick == nil || m.ID < pick.ID) {
+				pick = &ms[i]
+			}
+		}
+		if pick == nil {
+			return hub.Machine{}, fmt.Errorf("no machine on the hub's list is %v, which screen %s is for", def.Protocols, def.ID)
+		}
+		return *pick, nil
+	}
 	for _, m := range ms {
 		if strconv.Itoa(m.ID) == machine || m.Name == machine {
 			if !def.Accepts(m.Protocol) {
-				return "", fmt.Errorf("machine %s (%s) is %s; screen %s is for %v", machine, m.Name, m.Protocol, def.ID, def.Protocols)
+				return hub.Machine{}, fmt.Errorf("machine %s (%s) is %s; screen %s is for %v", machine, m.Name, m.Protocol, def.ID, def.Protocols)
 			}
-			return strconv.Itoa(m.ID), nil
+			return m, nil
 		}
 	}
-	return "", fmt.Errorf("machine %q is not on the hub's machine list", machine)
+	return hub.Machine{}, fmt.Errorf("machine %q is not on the hub's machine list", machine)
 }
 
 // executableDir is the folder of the running executable.
