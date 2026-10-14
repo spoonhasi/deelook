@@ -152,6 +152,11 @@ func main() {
 		opt := screens.Options{Timeout: *timeout, Lamps: lamps[id]}
 		serveStream(w, r, broker, def, id, view, opt)
 	})
+	// the manual at / and /help; the app draws /hmi and /sampling
+	manual := &help{hub: hc, hubURL: *hubURL, sampler: sampler, dataDir: dataDir}
+	mux.Handle("GET /{$}", manual)
+	mux.Handle("GET /help", manual)
+	mux.Handle("GET /help.md", manual)
 	mux.Handle("/", spa(web.Dist()))
 
 	srv := &http.Server{
@@ -259,11 +264,13 @@ func serveStream(w http.ResponseWriter, r *http.Request, b *live.Broker, def *sc
 	}
 }
 
-// spa serves the embedded frontend; unknown paths get index.html.
+// spa serves the embedded frontend: index.html for the pages it draws,
+// which it tells apart by the path, and its files.
 func spa(dist fs.FS) http.Handler {
 	files := http.FileServerFS(dist)
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if _, err := fs.Stat(dist, trimSlash(r.URL.Path)); err != nil {
+		switch strings.TrimSuffix(r.URL.Path, "/") {
+		case "/hmi", "/sampling":
 			index, err := fs.ReadFile(dist, "index.html")
 			if err != nil {
 				http.Error(w, "frontend not built: run ./build.sh (or `npm run dev` in web/)", http.StatusNotFound)
@@ -273,15 +280,13 @@ func spa(dist fs.FS) http.Handler {
 			_, _ = w.Write(index)
 			return
 		}
+		name := strings.TrimPrefix(r.URL.Path, "/")
+		if fi, err := fs.Stat(dist, name); err != nil || fi.IsDir() || name == "index.html" {
+			http.Error(w, "not found: the pages are /help, /hmi and /sampling", http.StatusNotFound)
+			return
+		}
 		files.ServeHTTP(w, r)
 	})
-}
-
-func trimSlash(p string) string {
-	if p == "/" || p == "" {
-		return "index.html"
-	}
-	return p[1:]
 }
 
 func writeJSON(w http.ResponseWriter, v any) {

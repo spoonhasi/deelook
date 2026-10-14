@@ -11,7 +11,7 @@ CNC의 HMI 화면을 웹 브라우저에 다시 그리고, FANUC 서보·주축 
 
 | 부분 | 보여 주는 것 | 어떻게 |
 |---|---|---|
-| **HMI 화면** (`/`) | CNC 공통 인터페이스로 제어기 화면을 만드는 법 | 값은 전부 **deemesh-hub**에서 읽습니다(읽기 전용, 기계에 쓰는 경로 없음). deemesh는 FANUC·SIEMENS·Mitsubishi 등 여러 제어기를 같은 주소 체계로 다루는 공통 인터페이스입니다(무료). |
+| **HMI 화면** (`/hmi`) | CNC 공통 인터페이스로 제어기 화면을 만드는 법 | 값은 전부 **deemesh-hub**에서 읽습니다(읽기 전용, 기계에 쓰는 경로 없음). deemesh는 FANUC·SIEMENS·Mitsubishi 등 여러 제어기를 같은 주소 체계로 다루는 공통 인터페이스입니다(무료). |
 | **시계열 수집** (`/sampling`) | deemesh가 다루지 않는 FANUC 고속 샘플링을 **직접 만드는 법** | deelook이 FOCAS2 라이브러리를 직접 불러 CNC에 연결합니다. 서보·주축 데이터, PMC 신호, O·N 번호, 트리거까지 `cnc_sdt*`의 모든 기능을 화면에서 써 보고 SQLite에 저장합니다. |
 
 **무엇을 쓰면 되나**
@@ -201,7 +201,7 @@ deelook\
     deelook.db                ← deelook 내부용: 세션 목록, 세션 번호, 기계 목록과 IP (넘겨주지 않음)
 ```
 
-- **`deelook.exe`를 더블클릭**하면 시작하고 브라우저가 열립니다. 검은 창(로그)을 닫으면 끝납니다.
+- **`deelook.exe`를 더블클릭**하면 시작하고 브라우저에 도움말(`/`)이 열립니다. 거기서 HMI 화면·시계열 수집으로 갑니다. 검은 창(로그)을 닫으면 끝납니다.
   설정 파일이 잘못됐거나 포트가 이미 쓰이는 등 시작하지 못하면 그 창에 이유를 띄우고 Enter를 누를 때까지 기다립니다.
   FOCAS2 라이브러리가 없으면 시작은 하고, 그 창과 시계열 수집 화면에 넣는 법을 알려 줍니다.
 - 설정은 `deelook.toml`(TOML)입니다. 없으면 deelook이 시작할 때 **지금 쓰이는 값(기본값)을 그대로 적은 파일**을 만들어 두니,
@@ -226,7 +226,15 @@ deelook\
 bin/deelook-windows-amd64/deelook.exe -hub http://127.0.0.1:8080 -machine 1 -lamps 1=ncguide
 ```
 
-브라우저에서 `http://<서버 주소>:8090/`(HMI 화면) 또는 `http://<서버 주소>:8090/sampling`(시계열 수집)을 엽니다. 다른 기계의 HMI는 `/?machine=2` 또는 `/?machine=bench-31i`. 예전 주소 `/#/sampling`도 그대로 열립니다.
+브라우저에서 `http://<서버 주소>:8090/`을 엽니다.
+
+| 주소 | 내용 |
+|---|---|
+| `/`, `/help` | 도움말: 이 프로그램이 무엇이고 어떻게 쓰는지, 지금 상태(허브 연결, FOCAS2 라이브러리, 기계, 수집, 디스크), 설정, HTTP API. 브라우저에는 HTML, 그 밖(curl, 에이전트)에는 Markdown(`/help.md`는 늘 Markdown). 내용은 [`help.md`](help.md) |
+| `/hmi` | HMI 화면. 다른 기계는 `/hmi?machine=2` 또는 `/hmi?machine=bench-31i` |
+| `/sampling` | 시계열 수집 |
+
+예전 주소도 열립니다: `/?machine=2`는 `/hmi?machine=2`로, `/#/sampling`은 `/sampling`으로 넘어갑니다.
 
 | 옵션 | 기본값 | 설명 |
 |---|---|---|
@@ -239,7 +247,7 @@ bin/deelook-windows-amd64/deelook.exe -hub http://127.0.0.1:8080 -machine 1 -lam
 | `-fwlib` | 실행 파일 옆 `Fwlib64.dll` / `libfwlib32.so*` | FOCAS2 라이브러리 파일 (실행 파일과 같은 비트) |
 | `-data` | 실행 파일 옆 `deelook-data` | 데이터 폴더: `sessions\`(수집 한 건마다 SQLite 파일), `deelook.db`(목록·기계) |
 | `-minfree` | `1GB` | 데이터 폴더 디스크의 남은 공간이 이보다 적으면 수집을 시작하지 않거나 멈춤 (`0`: 보지 않음) |
-| `-open` | 더블클릭으로 실행했을 때만 | 시작하면 브라우저로 화면 열기 |
+| `-open` | 더블클릭으로 실행했을 때만 | 시작하면 브라우저로 도움말(`/`) 열기 |
 
 - 보는 브라우저가 몇 개든 (기계, 화면)마다 허브를 한 번만 읽습니다. 화면을 바꾸면 그 화면에 필요한 값만 읽고, 아무도 보지 않으면 5초 뒤에 읽기를 멈춥니다.
 - 허브와 다른 PC에서 돌리면 그 PC의 IP를 허브 설정 `allowed_ips_read`에 넣어야 합니다.
@@ -282,6 +290,7 @@ FOCAS_LIB=$PWD/fwlib/windows-x64/Fwlib64.dll FOCAS_HOST=192.0.2.10 FOCAS_PORT=81
 | 위치 | 내용 |
 |---|---|
 | `main.go` | HTTP 서버, 화면 스트림(SSE) |
+| `help.go`, `help.md` | 도움말 페이지(`/`, `/help`): Markdown에 지금 상태를 넣어 브라우저에는 HTML로 |
 | `internal/hub` | deemesh-hub 읽기 클라이언트 |
 | `internal/live` | (기계, 화면)마다 폴링 하나, 구독자에게 분배 |
 | `internal/screens/fanuc.go` | Fanuc 화면별로 읽을 deemesh 주소 |

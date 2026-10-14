@@ -1,14 +1,16 @@
 <script lang="ts">
-  // Two pages, chosen by the URL path: the HMI screens (/) and the
+  // Two pages, chosen by the URL path: the HMI screens (/hmi) and the
   // time-series collection (/sampling). ?machine= stays for the HMI. The
-  // server answers every page path with this app; switching pages here
-  // changes the address without loading the page again.
+  // server answers both paths with this app; switching between them here
+  // changes the address without loading the page again. The manual (/ and
+  // /help) is a page of the server's own.
   import HmiView from './HmiView.svelte'
   import SamplingView from './sampling/SamplingView.svelte'
 
-  // addresses of earlier builds, #/ and #/sampling, still lead there
+  // addresses of earlier builds, #/ (the HMI) and #/sampling, still lead there
   if (location.hash.startsWith('#/')) {
-    history.replaceState(null, '', location.hash.slice(1) + location.search)
+    const to = location.hash.slice(1)
+    history.replaceState(null, '', (to === '/' ? '/hmi' : to) + location.search)
   }
 
   const search = location.search // kept when switching pages
@@ -29,7 +31,8 @@
 </script>
 
 <nav class="tabs" aria-label="페이지">
-  <a href={'/' + search} onclick={(e) => go(e, '/')} class:on={page === 'hmi'} aria-current={page === 'hmi' ? 'page' : undefined}>HMI 화면</a>
+  <a href="/help">도움말</a>
+  <a href={'/hmi' + search} onclick={(e) => go(e, '/hmi')} class:on={page === 'hmi'} aria-current={page === 'hmi' ? 'page' : undefined}>HMI 화면</a>
   <a href={'/sampling' + search} onclick={(e) => go(e, '/sampling')} class:on={page === 'sampling'}
     aria-current={page === 'sampling' ? 'page' : undefined}>시계열 수집</a>
 </nav>

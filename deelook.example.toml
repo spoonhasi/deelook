@@ -33,7 +33,7 @@ minfree = "1GB"
 # 다른 곳에 있으면 예: fwlib = 'C:\FANUC\Fwlib64.dll'  (같은 폴더에 fwlibe64.dll 도 있어야 함)
 fwlib = ""
 
-# 시작하면 브라우저로 화면 열기
+# 시작하면 브라우저로 도움말(/) 열기
 #   "auto" = 더블클릭으로 실행했을 때만,  true = 항상,  false = 열지 않음
 open = "auto"
 
