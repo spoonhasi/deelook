@@ -1,11 +1,24 @@
 # deelook
 
-두 가지를 합니다.
+CNC의 HMI 화면을 웹 브라우저에 다시 그리고, FANUC 서보·주축 고속 샘플링(FOCAS2 `cnc_sdt*`)을 직접 해 보는 프로그램입니다.
+**[deemesh](https://github.com/spoonhasi/deemesh)를 쓰는 예제**이기도 합니다.
 
-- **HMI 화면** (`#/`): CNC 값을 deemesh-hub에서 읽어 제어기 HMI 화면과 조작반을 웹 브라우저에 다시 그립니다.
-  **읽기 전용**입니다. 기계에 값을 쓰거나 키를 보내는 경로가 없습니다.
-- **시계열 수집** (`#/sampling`): Fanuc CNC의 고속 샘플링(FOCAS2 `cnc_sdt*`: 서보·주축 데이터, PMC 신호,
-  O·N 번호, 트리거)을 deelook이 직접 받아 SQLite에 저장합니다. 이것만 deemesh를 거치지 않고 deelook 자신의 FOCAS2 연결(기계당 하나)을 씁니다.
+> **English** — deelook redraws Fanuc CNC HMI screens in a web browser from values read through
+> [deemesh](https://github.com/spoonhasi/deemesh), a free unified CNC interface (the same address means the same thing on
+> FANUC, SIEMENS SINUMERIK and Mitsubishi controls). It also shows how to build what deemesh does not offer: FANUC
+> high-speed servo/spindle sampling with FOCAS2 `cnc_sdt*` — every option of those calls, with the pitfalls measured on real
+> CNCs. MIT-licensed: copy what you need. The rest of this document is in Korean.
+
+| 부분 | 보여 주는 것 | 어떻게 |
+|---|---|---|
+| **HMI 화면** (`#/`) | CNC 공통 인터페이스로 제어기 화면을 만드는 법 | 값은 전부 **deemesh-hub**에서 읽습니다(읽기 전용, 기계에 쓰는 경로 없음). deemesh는 FANUC·SIEMENS·Mitsubishi 등 여러 제어기를 같은 주소 체계로 다루는 공통 인터페이스입니다(무료). |
+| **시계열 수집** (`#/sampling`) | deemesh가 다루지 않는 FANUC 고속 샘플링을 **직접 만드는 법** | deelook이 FOCAS2 라이브러리를 직접 불러 CNC에 연결합니다. 서보·주축 데이터, PMC 신호, O·N 번호, 트리거까지 `cnc_sdt*`의 모든 기능을 화면에서 써 보고 SQLite에 저장합니다. |
+
+**무엇을 쓰면 되나**
+
+- 여러 메이커 CNC의 상태·좌표·프로그램·알람 같은 값을 한 가지 방식으로 읽고 쓰고 싶다 → **deemesh**
+- FANUC 서보·주축 파형(토크, 속도, 위치 편차 …)을 ms 단위로 모으고 싶다 → 이 저장소의 코드를 보고 직접 만드세요
+  (MIT라 그대로 가져다 써도 됩니다). 어디부터 보면 되는지는 아래 "[`cnc_sdt*`를 직접 만들 때](#cnc_sdt를-직접-만들-때)".
 
 `cnc_sdt*`는 필수입니다. 그래서 deelook은 **Windows 64비트와 Linux 32비트**로만 나오고(그 함수가 든 FOCAS2
 라이브러리가 있는 조합), 시작할 때 라이브러리를 불러와 없거나 함수가 빠졌으면 시작하지 않습니다.
@@ -74,7 +87,9 @@ deemesh-hub에 `nc_focas2_fanuc` 프로토콜로 등록된 기계는 모두 대�
 - 시작·종료·현재값 API는 `Content-Type: application/json` 요청만 받습니다(다른 사이트에서 폼으로 누르는 것을 막음).
   deelook에 접속할 수 있는 사람은 누구나 허브의 어느 Fanuc 기계에서든 수집을 시작·종료하고, 기계를 추가·삭제할 수 있습니다.
 
-### 실측으로 알게 된 것 (2026-10-14, 31i 벤치 = 30i-B, NC Guide 0i-F, Fwlib64 6.9/7.3)
+### 실측으로 알게 된 것
+
+2026-10-14, 31i 벤치(30i-B)·NC Guide 0i-F, Fwlib64 6.9/7.3으로 확인했습니다.
 
 레퍼런스에 없는데 deelook이 맞춰 둔 것들입니다.
 
@@ -133,6 +148,22 @@ FOCAS2 라이브러리는 시작할 때 불러옵니다 (`-fwlib`, 없으면 실
 - Linux 판은 핸들을 쓰는 스레드에서 `cnc_startupprocess` 를 먼저 불러야 합니다. 다른 스레드에서 부르면 연결은 되지만
   그 핸들의 모든 호출이 `EW_HANDLE(-8)` 입니다 (실측). deelook은 연결할 때마다 그 스레드에서 부르고, 끊을 때
   `cnc_exitthread` 로 정리합니다 (deemesh와 같은 방식).
+
+## `cnc_sdt*`를 직접 만들 때
+
+deelook의 수집 코드는 다른 프로그램에 옮겨 쓰기 쉽게 나뉘어 있습니다. 순서대로 보면 됩니다.
+
+| 파일 | 볼 것 |
+|---|---|
+| [`internal/focas/focas.go`](internal/focas/focas.go) | FOCAS2 구조체를 메모리 배치 그대로 옮긴 것(`IDBSDTCHAN` 6바이트, `IDBSDTCHAN2` 102바이트, `PMC_DATA`, `TRG_DATA`, `ODBSD`), 각 `cnc_sdt*` 호출, 오류 상세 번호(`cnc_getdtailerr`). 배치는 [`focas_test.go`](internal/focas/focas_test.go)가 검사합니다. |
+| [`internal/focas/load_windows.go`](internal/focas/load_windows.go), [`load_linux.go`](internal/focas/load_linux.go) | cgo 없이 실행 중에 DLL/.so를 불러오는 법. Windows는 기종별 DLL을 찾게 `SetDllDirectory`, Linux는 핸들을 쓰는 스레드마다 `cnc_startupprocess`. |
+| [`internal/sampling/config.go`](internal/sampling/config.go) | 채널 설정: 주기·시프트를 `shift`에 넣는 법, PMC 주소 해석, 미리 막을 수 있는 규칙, PMC 비트 채널을 맨 뒤로 보내는 것. |
+| [`internal/sampling/run.go`](internal/sampling/run.go) | 수집 순서(정리 → 설정 → 시작 → 읽기 반복 → 끝). 핸들은 OS 스레드 하나에 고정하고, 읽기는 쉬지 않고, DB 쓰기는 다른 고루틴으로 넘깁니다(늦게 읽으면 `EW_BUFFER`). 끝낼 때 `cnc_sdtendsmpl`·`cnc_sdtendsmpl2`·`cnc_sdtcancelsmpl` 중 무엇을 부르는지. |
+| [`internal/sampling/types.go`](internal/sampling/types.go) | 서보 0~46·주축 0~21 데이터 종류와 단위 표. |
+| [`internal/focas/integration_test.go`](internal/focas/integration_test.go) | 실제 CNC에 기능을 하나씩 시험해 보는 코드(환경 변수로 켬, 아래 "개발"). |
+
+레퍼런스에 없는 함정은 위 "[실측으로 알게 된 것](#실측으로-알게-된-것)"에 모아 두었습니다.
+특히 PMC 비트 채널 순서와, 확장 수집이 실패한 뒤 `cnc_sdtendsmpl2`를 꼭 불러야 하는 것은 놓치기 쉽습니다.
 
 ## 실행
 
