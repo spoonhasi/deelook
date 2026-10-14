@@ -30,7 +30,11 @@ const settingsName = "deelook.toml"
 // machinesName is the file beside the sampling database (deelook-data/)
 // where deelook keeps the machines it can sample: the hub's as last
 // received, and those added in deelook.
-const machinesName = "deelook-machines.json"
+const machinesName = "machines.json"
+
+// oldMachinesName is what machinesName was called while it sat next to
+// the executable (and briefly in deelook-data/).
+const oldMachinesName = "deelook-machines.json"
 
 // moveFile moves from to to when from exists and to does not; a failure
 // is logged, not fatal.

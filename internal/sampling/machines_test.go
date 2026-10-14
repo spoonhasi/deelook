@@ -19,7 +19,7 @@ func TestMachinesFile(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer st.Close()
-	path := filepath.Join(dir, "deelook-machines.json")
+	path := filepath.Join(dir, "machines.json")
 	ms, err := OpenMachines(path, st)
 	if err != nil {
 		t.Fatal(err)
@@ -113,7 +113,7 @@ func TestMachinesFromOldDatabase(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	ms, err := OpenMachines(filepath.Join(dir, "deelook-machines.json"), st)
+	ms, err := OpenMachines(filepath.Join(dir, "machines.json"), st)
 	if err != nil {
 		t.Fatal(err)
 	}

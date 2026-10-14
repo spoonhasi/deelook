@@ -103,7 +103,8 @@ func main() {
 	// the machine list (with CNC addresses) sits beside the database, in
 	// its own file: the database alone is what gets handed around
 	machinesPath := filepath.Join(filepath.Dir(*dbPath), machinesName)
-	moveFile(filepath.Join(exeDir, machinesName), machinesPath) // where deelook kept it for a while
+	moveFile(filepath.Join(exeDir, oldMachinesName), machinesPath) // where earlier builds kept it
+	moveFile(filepath.Join(filepath.Dir(*dbPath), oldMachinesName), machinesPath)
 	machines, err := sampling.OpenMachines(machinesPath, store)
 	if err != nil {
 		fatal("%v", err)

@@ -10,6 +10,7 @@ deelook-data/
 # NC Guide screen captures used to match the HMI: kept locally, not published
 /docs/reference/
 # deelook state and settings next to an executable run from here: CNC and hub addresses
+machines.json
+machines.json.tmp
 deelook-machines.json
-deelook-machines.json.tmp
 /deelook.toml
