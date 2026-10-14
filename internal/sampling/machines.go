@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"log"
 	"os"
-	"path/filepath"
 	"runtime"
 	"slices"
 	"strconv"
@@ -22,12 +21,13 @@ import (
 // Machines that can sample come from deemesh-hub's machine list (the
 // nc_focas2_fanuc ones), kept so sampling still works while the hub cannot
 // be reached, and from machines added in deelook itself (ids "L1", "L2"...),
-// for a deelook without a hub. They live in a JSON file next to the
-// settings, not in the sampling database: that database is meant to be
-// handed to whoever needs the data, and CNC addresses must not go with it.
+// for a deelook without a hub. They live in deelook.db (store.go), never in
+// a session file: those are handed to whoever needs the data, and CNC
+// addresses must not go with them.
 
 // machine is one machine that can sample. Host and port never go to
-// browsers.
+// browsers. (The JSON names are those of the machines.json of earlier
+// builds, read once to move it into deelook.db.)
 type machine struct {
 	ID       string   `json:"id"`
 	Source   string   `json:"source"` // hub | local
@@ -46,65 +46,116 @@ func (mc machine) target() (target, error) {
 	return target{ID: mc.ID, Name: mc.Name, Host: mc.Host, Port: uint16(mc.Port)}, nil
 }
 
-// Machines is the machine list file.
+// Machines is the machine list, kept in memory and saved to deelook.db
+// whole on every change (it is a few rows).
 type Machines struct {
-	path string
-	mu   sync.Mutex
-	data machineData
+	store *Store
+	mu    sync.Mutex
+	data  machineData
 }
 
 type machineData struct {
-	Note        string    `json:"note"`
 	HubSyncedAt time.Time `json:"hubSyncedAt"` // when the hub's list was last received
 	Machines    []machine `json:"machines"`
 }
 
-const machinesNote = "Machines deelook can sample: the deemesh-hub's Fanuc ones as last received, and those added in deelook. Written by deelook."
-
-// OpenMachines reads the machine list file at path (none is an empty
-// list). A list still in an older sampling database is moved here, and
-// the database compacted so it holds no machine addresses any more.
-func OpenMachines(path string, store *Store) (*Machines, error) {
-	m := &Machines{path: path}
-	raw, err := os.ReadFile(path)
-	switch {
-	case errors.Is(err, os.ErrNotExist):
-	case err != nil:
-		return nil, err
-	default:
-		if err := json.Unmarshal(raw, &m.data); err != nil {
-			return nil, fmt.Errorf("%s: %w", path, err)
-		}
-	}
-	old, at, err := store.takeOldMachines()
+// OpenMachines reads the machine list from deelook.db. When it is empty it
+// takes the first of oldFiles (the machines.json of earlier builds) there
+// is, or the list an older single database held; the old files are removed
+// once the list is in deelook.db.
+func OpenMachines(store *Store, oldFiles ...string) (*Machines, error) {
+	m := &Machines{store: store}
+	rows, err := store.index.Query(`SELECT id, source, name, host, port, axes, spindles, paths FROM machines`)
 	if err != nil {
 		return nil, err
 	}
-	if len(old) > 0 && len(m.data.Machines) == 0 {
-		m.data.Machines, m.data.HubSyncedAt = old, at
-		if err := m.save(); err != nil {
+	for rows.Next() {
+		var mc machine
+		var axes, spindles string
+		if err := rows.Scan(&mc.ID, &mc.Source, &mc.Name, &mc.Host, &mc.Port, &axes, &spindles, &mc.Paths); err != nil {
+			rows.Close()
 			return nil, err
+		}
+		_ = json.Unmarshal([]byte(axes), &mc.Axes)
+		_ = json.Unmarshal([]byte(spindles), &mc.Spindles)
+		m.data.Machines = append(m.data.Machines, mc)
+	}
+	rows.Close()
+	if v, ok := store.meta("hub_synced_at"); ok {
+		m.data.HubSyncedAt, _ = time.Parse(time.RFC3339Nano, v)
+	}
+	if len(m.data.Machines) == 0 {
+		for _, f := range oldFiles {
+			var d machineData
+			if raw, err := os.ReadFile(f); err == nil && json.Unmarshal(raw, &d) == nil && len(d.Machines) > 0 {
+				m.data = d
+				break
+			}
+		}
+		if len(m.data.Machines) == 0 {
+			old, at, _ := store.takeOldMachines()
+			m.data.Machines, m.data.HubSyncedAt = old, at
+		}
+		if len(m.data.Machines) > 0 {
+			if err := m.save(); err != nil {
+				return nil, err
+			}
+		}
+	}
+	for _, f := range oldFiles {
+		for _, p := range []string{f, f + ".tmp"} {
+			if err := os.Remove(p); err == nil {
+				log.Printf("machine list moved into %s; removed %s", indexName, p)
+			}
 		}
 	}
 	return m, nil
 }
 
-// save writes the file whole, through a temporary file so a crash never
-// leaves half of it; m.mu is held (or m not shared yet).
+// save writes the list to deelook.db in one transaction; m.mu is held (or
+// m not shared yet).
 func (m *Machines) save() error {
-	m.data.Note = machinesNote
-	raw, err := json.MarshalIndent(m.data, "", "  ")
+	tx, err := m.store.index.Begin()
 	if err != nil {
 		return err
 	}
-	if err := os.MkdirAll(filepath.Dir(m.path), 0o755); err != nil {
+	defer tx.Rollback()
+	if _, err := tx.Exec(`DELETE FROM machines`); err != nil {
 		return err
 	}
-	tmp := m.path + ".tmp"
-	if err := os.WriteFile(tmp, append(raw, '\n'), 0o644); err != nil {
+	for _, mc := range m.data.Machines {
+		a, _ := json.Marshal(nonNil(mc.Axes))
+		sp, _ := json.Marshal(nonNil(mc.Spindles))
+		if _, err := tx.Exec(`INSERT INTO machines (id, source, name, host, port, axes, spindles, paths) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+			mc.ID, mc.Source, mc.Name, mc.Host, mc.Port, string(a), string(sp), mc.Paths); err != nil {
+			return err
+		}
+	}
+	if !m.data.HubSyncedAt.IsZero() {
+		if _, err := tx.Exec(`INSERT INTO meta (key, value) VALUES ('hub_synced_at', ?)
+			ON CONFLICT(key) DO UPDATE SET value = excluded.value`, stamp(m.data.HubSyncedAt)); err != nil {
+			return err
+		}
+	}
+	// local machine numbers in the list count as given out
+	n := 0
+	for _, mc := range m.data.Machines {
+		if k, err := strconv.Atoi(strings.TrimPrefix(mc.ID, "L")); err == nil && mc.Source == "local" {
+			n = max(n, k)
+		}
+	}
+	if _, err := tx.Exec(`INSERT INTO meta (key, value) VALUES ('last_local_machine', ?)
+		ON CONFLICT(key) DO UPDATE SET value = MAX(CAST(value AS INTEGER), CAST(excluded.value AS INTEGER))`, n); err != nil {
 		return err
 	}
-	return os.Rename(tmp, m.path)
+	return tx.Commit()
+}
+
+func nonNil(s []string) []string {
+	if s == nil {
+		return []string{}
+	}
+	return s
 }
 
 // list returns the machines, the hub's by number, then those added here.
@@ -187,13 +238,19 @@ func (m *Machines) setNames(id string, axes, spindles []string, paths int) error
 	return nil
 }
 
-// addLocal adds a machine with a new id L<n>, n above every local id in
-// the file and above taken (the highest one recorded sessions keep, so a
-// removed machine's sessions never pass for a new one's).
+// addLocal adds a machine with a new id L<n>, n above every local id given
+// out before (kept in deelook.db), in the list, and taken (the highest one
+// recorded sessions keep), so a removed machine's sessions never pass for a
+// new one's.
 func (m *Machines) addLocal(name, host string, port int, axes, spindles []string, paths, taken int) (string, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	n := taken
+	if v, ok := m.store.meta("last_local_machine"); ok {
+		if k, err := strconv.Atoi(v); err == nil {
+			n = max(n, k)
+		}
+	}
 	for _, mc := range m.data.Machines {
 		if k, err := strconv.Atoi(strings.TrimPrefix(mc.ID, "L")); err == nil && mc.Source == "local" {
 			n = max(n, k)
@@ -202,7 +259,10 @@ func (m *Machines) addLocal(name, host string, port int, axes, spindles []string
 	id := "L" + strconv.Itoa(n+1)
 	m.data.Machines = append(m.data.Machines, machine{ID: id, Source: "local", Name: name, Host: host, Port: port,
 		Axes: axes, Spindles: spindles, Paths: paths})
-	return id, m.save()
+	if err := m.save(); err != nil {
+		return "", err
+	}
+	return id, m.store.setMeta("last_local_machine", strconv.Itoa(n+1))
 }
 
 func (m *Machines) deleteLocal(id string) error {
@@ -228,9 +288,9 @@ func (m *Manager) machines(ctx context.Context) (list []machine, hubErr error) {
 	ms, err := m.hub.Machines(hctx)
 	cancel()
 	if err == nil {
-		// a file deelook cannot write only loses the copy for later
+		// a deelook.db deelook cannot write only loses the copy for later
 		if serr := m.list.syncHub(ms, time.Now()); serr != nil {
-			log.Printf("machine list %s: %v", m.list.path, serr)
+			log.Printf("machine list in %s: %v", indexName, serr)
 		}
 	}
 	return m.list.list(), err

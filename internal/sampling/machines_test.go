@@ -14,13 +14,12 @@ import (
 
 func TestMachinesFile(t *testing.T) {
 	dir := t.TempDir()
-	st, err := OpenStore(filepath.Join(dir, "sessions"), "")
+	st, err := OpenStore(dir, "")
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer st.Close()
-	path := filepath.Join(dir, "machines.json")
-	ms, err := OpenMachines(path, st)
+	ms, err := OpenMachines(st)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -47,7 +46,7 @@ func TestMachinesFile(t *testing.T) {
 	}
 
 	// a deelook started later reads the same from the file
-	again, err := OpenMachines(path, st)
+	again, err := OpenMachines(st)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -112,12 +111,12 @@ func TestMachinesFromOldDatabase(t *testing.T) {
 	}
 	old.Close()
 
-	st, err := OpenStore(filepath.Join(dir, "sessions"), legacy)
+	st, err := OpenStore(dir, legacy)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer st.Close()
-	ms, err := OpenMachines(filepath.Join(dir, "machines.json"), st)
+	ms, err := OpenMachines(st)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -132,5 +131,46 @@ func TestMachinesFromOldDatabase(t *testing.T) {
 		if _, err := os.Stat(f); err == nil {
 			t.Errorf("%s still there", f)
 		}
+	}
+}
+
+// TestMachinesFromJSON: the machines.json of earlier builds moves into
+// deelook.db and is removed.
+func TestMachinesFromJSON(t *testing.T) {
+	dir := t.TempDir()
+	st, err := OpenStore(dir, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	old := filepath.Join(dir, "machines.json")
+	const text = `{"hubSyncedAt":"2026-10-14T12:00:00Z","machines":[{"id":"L1","source":"local","name":"lathe","host":"198.51.100.9","port":8193}]}`
+	if err := os.WriteFile(old, []byte(text), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	ms, err := OpenMachines(st, old)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if list := ms.list(); len(list) != 1 || list[0].Host != "198.51.100.9" {
+		t.Fatalf("imported %+v", list)
+	}
+	if _, err := os.Stat(old); err == nil {
+		t.Error("machines.json still there")
+	}
+	// read back from deelook.db alone
+	again, err := OpenMachines(st, old)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if list := again.list(); len(list) != 1 || list[0].ID != "L1" || again.hubSyncedAt().IsZero() {
+		t.Errorf("from deelook.db %+v %v", list, again.hubSyncedAt())
+	}
+	// a local machine's number is not given out again after it is removed
+	if err := again.deleteLocal("L1"); err != nil {
+		t.Fatal(err)
+	}
+	if id, _ := again.addLocal("mill", "198.51.100.10", 8193, nil, nil, 0, 0); id != "L2" {
+		t.Errorf("next local machine %q", id)
 	}
 }

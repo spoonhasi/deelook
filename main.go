@@ -108,18 +108,17 @@ func main() {
 		log.Printf("no FOCAS2 library, so no sampling (the HMI screens work): %v", libErr)
 		log.Printf("for sampling, put %s next to the executable or set fwlib in %s (fwlib/README.md)", libraryFiles(), settingsName)
 	}
-	store, err := sampling.OpenStore(filepath.Join(dataDir, "sessions"), legacyDB)
+	// the data folder: session files (what gets handed around) and
+	// deelook.db (the session list and the machine list with CNC addresses)
+	store, err := sampling.OpenStore(dataDir, legacyDB)
 	if err != nil {
 		fatal("%v", err)
 	}
 	defer store.Close()
 	store.SetMinFree(*o.minFree)
-	// the machine list (with CNC addresses) sits in the data folder in a
-	// file of its own: session files alone are what gets handed around
-	machinesPath := filepath.Join(dataDir, machinesName)
-	moveFile(filepath.Join(exeDir, oldMachinesName), machinesPath) // where earlier builds kept it
-	moveFile(filepath.Join(dataDir, oldMachinesName), machinesPath)
-	machines, err := sampling.OpenMachines(machinesPath, store)
+	machines, err := sampling.OpenMachines(store, // and the machine list files of earlier builds
+		filepath.Join(dataDir, "machines.json"), filepath.Join(dataDir, "deelook-machines.json"),
+		filepath.Join(exeDir, "deelook-machines.json"))
 	if err != nil {
 		fatal("%v", err)
 	}

@@ -2,17 +2,16 @@ package sampling
 
 import (
 	"bufio"
-	"cmp"
 	"database/sql"
 	"encoding/binary"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"os"
 	"path/filepath"
 	"regexp"
-	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -22,12 +21,19 @@ import (
 	_ "modernc.org/sqlite" // pure Go: keeps the build free of cgo
 )
 
-// Store keeps each sampling session in its own SQLite file in one folder,
-// named <start>_<machine>_s<id>.db: a table with the session, one with the
-// samples and one with the trigger marks. A finished session's file is
-// complete on its own (no write-ahead log next to it), so it can be copied
-// or downloaded and handed to whoever needs the data; deleting a session is
-// deleting its file. No file holds machine addresses (machines.go).
+// Store keeps the sampling sessions: each in its own SQLite file in the
+// sessions folder, named <start>_<machine>_s<id>.db (a table with the
+// session, one with the samples and one with the trigger marks), and a
+// list of them in deelook.db beside that folder.
+//
+// The session files are the record. A finished one is complete on its own
+// (no write-ahead log next to it), so it can be copied or downloaded and
+// handed to whoever needs the data; deleting a session is deleting its
+// file; no file holds machine addresses. deelook.db is deelook's own: the
+// session list (a copy of each file's session row, kept in step with the
+// folder, so files deleted or put there by hand show up and a lost
+// deelook.db is rebuilt from the files), the highest session number given
+// out, and the machine list (machines.go).
 //
 // Samples go in chunks: one row per channel per read from the CNC, the raw
 // 16-bit words as a little-endian blob. Sample i of a channel was taken i
@@ -35,24 +41,53 @@ import (
 // this is more exact than the PC clock; received_at records when the chunk
 // arrived).
 type Store struct {
-	dir     string // the session files
-	minFree uint64 // sampling stops below this much free disk space (0: never)
+	dir     string  // the session files
+	index   *sql.DB // deelook.db
+	minFree uint64  // sampling stops below this much free disk space (0: never)
 
-	mu    sync.Mutex
-	paths map[int64]string     // every session's file
-	open  map[int64]*sql.DB    // the sessions being written
-	cache map[string]cachedRow // session rows of files read, while they stay the same
-	next  int64                // the next session id
+	mu      sync.Mutex
+	open    map[int64]*sql.DB // the sessions being written
+	next    int64             // the next session number
+	ignored map[string]string // files left out of the list (and said so), by name: their modification time
 
 	oldMachines []machine // the machine list found in an older single database
 	oldSynced   time.Time
 }
 
-type cachedRow struct {
-	mod  time.Time
-	size int64
-	info SessionInfo
-}
+// indexName is deelook's own database in the data folder.
+const indexName = "deelook.db"
+
+const indexSchema = `
+CREATE TABLE IF NOT EXISTS sessions (    -- a copy of each session file's row, and the file
+	id           INTEGER PRIMARY KEY,
+	file         TEXT NOT NULL UNIQUE,       -- its name in the sessions folder
+	machine_id   TEXT NOT NULL,
+	machine_name TEXT NOT NULL,
+	started_at   TEXT NOT NULL,
+	ended_at     TEXT,
+	status       TEXT NOT NULL,
+	error        TEXT NOT NULL DEFAULT '',
+	config       TEXT NOT NULL,
+	samples      TEXT NOT NULL DEFAULT '[]',
+	events       INTEGER NOT NULL DEFAULT 0,
+	size         INTEGER NOT NULL DEFAULT 0, -- the file as last read: its size and
+	modified     TEXT NOT NULL DEFAULT ''    -- modification time, to see it changed
+);
+CREATE TABLE IF NOT EXISTS machines (    -- machines.go
+	id       TEXT PRIMARY KEY,               -- hub machine_id, or L1, L2... for machines added in deelook
+	source   TEXT NOT NULL,                  -- hub | local
+	name     TEXT NOT NULL,
+	host     TEXT NOT NULL,
+	port     INTEGER NOT NULL,
+	axes     TEXT NOT NULL DEFAULT '[]',     -- servo axis names, logical order (all paths)
+	spindles TEXT NOT NULL DEFAULT '[]',
+	paths    INTEGER NOT NULL DEFAULT 0      -- 0: not known
+);
+CREATE TABLE IF NOT EXISTS meta (
+	key   TEXT PRIMARY KEY,                  -- last_session_id, last_local_machine, hub_synced_at
+	value TEXT NOT NULL
+);
+`
 
 const sessionSchema = `
 CREATE TABLE IF NOT EXISTS session (    -- one row
@@ -84,63 +119,196 @@ CREATE INDEX IF NOT EXISTS events_time ON events(time_us);
 
 var sessionFile = regexp.MustCompile(`_s(\d+)\.db$`)
 
-// OpenStore opens the folder of session files dir, creating it if needed.
-// Sessions left "running" by a process that died are marked "interrupted".
-// legacy names the single database an older deelook kept every session in
-// ("" or a missing file: none): its sessions are moved to files of their
-// own and, once each is checked, the old database is removed.
-func OpenStore(dir, legacy string) (*Store, error) {
+// OpenStore opens the data folder dataDir: deelook.db and the sessions
+// folder, creating them if needed, and brings the session list in step
+// with the files. legacy names the single database an older deelook kept
+// every session in ("" or a missing file: none): its sessions are moved to
+// files of their own and, once each is checked, the old database is removed.
+func OpenStore(dataDir, legacy string) (*Store, error) {
+	dir := filepath.Join(dataDir, "sessions")
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return nil, err
 	}
-	s := &Store{dir: dir, paths: map[int64]string{}, open: map[int64]*sql.DB{}, cache: map[string]cachedRow{}, next: 1}
-	if err := s.scan(); err != nil {
+	path := filepath.Join(dataDir, indexName)
+	index, err := sql.Open("sqlite", dsn(path, true))
+	if err == nil {
+		_, err = index.Exec(indexSchema)
+	}
+	if err != nil {
+		if index != nil {
+			index.Close()
+		}
+		return nil, fmt.Errorf("%s: %w", path, err)
+	}
+	s := &Store{dir: dir, index: index, open: map[int64]*sql.DB{}, next: 1, ignored: map[string]string{}}
+	fail := func(err error) (*Store, error) {
+		index.Close()
 		return nil, err
+	}
+	if v, ok := s.meta("last_session_id"); ok {
+		if n, err := strconv.ParseInt(v, 10, 64); err == nil {
+			s.next = n + 1
+		}
+	}
+	// earlier builds kept the highest number in a file in the sessions folder
+	if b, err := os.ReadFile(filepath.Join(dir, "last-session-id")); err == nil {
+		if n, err := strconv.ParseInt(strings.TrimSpace(string(b)), 10, 64); err == nil {
+			s.noteID(n)
+		}
+		os.Remove(filepath.Join(dir, "last-session-id"))
+	}
+	if err := s.reconcile(); err != nil {
+		return fail(err)
 	}
 	if legacy != "" {
 		if _, err := os.Stat(legacy); err == nil {
 			if err := s.migrate(legacy); err != nil {
-				return nil, fmt.Errorf("moving the sessions of %s to files of their own: %w", legacy, err)
+				return fail(fmt.Errorf("moving the sessions of %s to files of their own: %w", legacy, err))
+			}
+			if err := s.reconcile(); err != nil {
+				return fail(err)
 			}
 		}
 	}
 	return s, nil
 }
 
-// scan finds the session files and marks the ones a dead process left
-// running.
-func (s *Store) scan() error {
+func (s *Store) meta(key string) (string, bool) {
+	var v string
+	err := s.index.QueryRow(`SELECT value FROM meta WHERE key = ?`, key).Scan(&v)
+	return v, err == nil
+}
+
+func (s *Store) setMeta(key, value string) error {
+	_, err := s.index.Exec(`INSERT INTO meta (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value`, key, value)
+	return err
+}
+
+// noteID records id as given out, so a deleted session's number never
+// comes back; s.mu is held (or s not shared yet).
+func (s *Store) noteID(id int64) {
+	if id < s.next {
+		return
+	}
+	s.next = id + 1
+	if err := s.setMeta("last_session_id", strconv.FormatInt(id, 10)); err != nil {
+		log.Printf("%s: %v", indexName, err)
+	}
+}
+
+// reconcile brings the session list in step with the sessions folder:
+// files new or changed since last read are (re)read, entries whose file is
+// gone are dropped, and sessions a dead process left running are marked
+// interrupted. s.mu is held (or s not shared yet).
+func (s *Store) reconcile() error {
 	entries, err := os.ReadDir(s.dir)
 	if err != nil {
 		return err
 	}
-	// numbers of deleted sessions are not given out again
-	if b, err := os.ReadFile(filepath.Join(s.dir, lastIDFile)); err == nil {
-		if n, err := strconv.ParseInt(strings.TrimSpace(string(b)), 10, 64); err == nil {
-			s.next = max(s.next, n+1)
+	type entry struct {
+		id       int64
+		size     int64
+		modified string
+	}
+	listed := map[string]entry{}
+	byID := map[int64]string{}
+	rows, err := s.index.Query(`SELECT id, file, size, modified FROM sessions`)
+	if err != nil {
+		return err
+	}
+	for rows.Next() {
+		var e entry
+		var file string
+		if rows.Scan(&e.id, &file, &e.size, &e.modified) == nil {
+			listed[file], byID[e.id] = e, file
 		}
 	}
-	for _, e := range entries {
-		m := sessionFile.FindStringSubmatch(e.Name())
-		if m == nil || e.IsDir() {
+	rows.Close()
+
+	present := map[string]bool{}
+	for _, de := range entries {
+		name := de.Name()
+		if de.IsDir() || !sessionFile.MatchString(name) {
 			continue
 		}
-		id, _ := strconv.ParseInt(m[1], 10, 64)
-		path := filepath.Join(s.dir, e.Name())
-		s.paths[id] = path
-		s.next = max(s.next, id+1)
-		info, err := s.read(path)
-		if err != nil {
-			continue // not a session file deelook can read: listed nowhere
+		present[name] = true
+		e, ok := listed[name]
+		if ok && s.open[e.id] != nil {
+			continue // being written: CreateSession and FinishSession keep its entry
 		}
-		if info.Status == "running" {
-			if err := closeInterrupted(path); err != nil {
-				return fmt.Errorf("%s: %w", path, err)
+		fi, err := de.Info()
+		if err != nil || ok && e.size == fi.Size() && e.modified == stamp(fi.ModTime()) ||
+			!ok && s.ignored[name] == stamp(fi.ModTime()) {
+			continue
+		}
+		s.ignored[name] = stamp(fi.ModTime()) // until listed below
+		path := filepath.Join(s.dir, name)
+		info, err := readSession(path)
+		if err == nil && info.Status == "running" { // a dead process left it so
+			if err = closeInterrupted(path); err == nil {
+				info, err = readSession(path)
 			}
-			delete(s.cache, path)
+		}
+		if err == nil {
+			fi, err = os.Stat(path)
+		}
+		if err != nil {
+			log.Printf("session file %s: %v (not listed)", path, err)
+			continue
+		}
+		if other, taken := byID[info.ID]; taken && other != name {
+			log.Printf("session file %s: number %d belongs to %s already (not listed)", path, info.ID, other)
+			continue
+		}
+		if err := s.list(info, name, fi.Size(), stamp(fi.ModTime())); err != nil {
+			return err
+		}
+		delete(s.ignored, name)
+		byID[info.ID] = name
+		s.noteID(info.ID)
+	}
+	for name, e := range listed {
+		if !present[name] && s.open[e.id] == nil {
+			if _, err := s.index.Exec(`DELETE FROM sessions WHERE file = ?`, name); err != nil {
+				return err
+			}
+			clear(s.ignored) // a file left out for its number may have it free now
 		}
 	}
 	return nil
+}
+
+// list writes a session's entry in deelook.db.
+func (s *Store) list(info SessionInfo, file string, size int64, modified string) error {
+	c, _ := json.Marshal(info.Config)
+	n, _ := json.Marshal(info.Samples)
+	var ended any
+	if info.EndedAt != nil {
+		ended = stamp(*info.EndedAt)
+	}
+	if _, err := s.index.Exec(`DELETE FROM sessions WHERE file = ? AND id <> ?`, file, info.ID); err != nil {
+		return err
+	}
+	_, err := s.index.Exec(`INSERT INTO sessions (id, file, machine_id, machine_name, started_at, ended_at, status, error,
+		config, samples, events, size, modified) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		ON CONFLICT(id) DO UPDATE SET file = excluded.file, machine_id = excluded.machine_id,
+		machine_name = excluded.machine_name, started_at = excluded.started_at, ended_at = excluded.ended_at,
+		status = excluded.status, error = excluded.error, config = excluded.config, samples = excluded.samples,
+		events = excluded.events, size = excluded.size, modified = excluded.modified`,
+		info.ID, file, info.Machine, info.MachineName, stamp(info.StartedAt), ended, info.Status, info.Error,
+		string(c), string(n), info.Events, size, modified)
+	return err
+}
+
+// readSession reads a closed session file's row.
+func readSession(path string) (SessionInfo, error) {
+	db, err := sql.Open("sqlite", dsn(path, false))
+	if err != nil {
+		return SessionInfo{}, err
+	}
+	defer db.Close()
+	return scanSession(db.QueryRow(`SELECT id, machine_id, machine_name, started_at, ended_at, status, error,
+		config, samples, (SELECT COUNT(*) FROM events) FROM session`))
 }
 
 // closeInterrupted marks a session a dead process left running and makes
@@ -159,8 +327,8 @@ func closeInterrupted(path string) error {
 	return err
 }
 
-// dsn is the sqlite address of a session file, for writing (write-ahead
-// log while sampling) or reading.
+// dsn is the sqlite address of a database file, for writing (write-ahead
+// log) or reading.
 func dsn(path string, write bool) string {
 	p := filepath.ToSlash(path)
 	p = strings.NewReplacer("%", "%25", "?", "%3f", "#", "%23").Replace(p)
@@ -171,7 +339,7 @@ func dsn(path string, write bool) string {
 }
 
 // Close closes the files still being written (deelook stops sampling
-// before, so normally none).
+// before, so normally none) and deelook.db.
 func (s *Store) Close() error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -179,7 +347,7 @@ func (s *Store) Close() error {
 		db.Close()
 		delete(s.open, id)
 	}
-	return nil
+	return s.index.Close()
 }
 
 // SetMinFree makes sampling stop when the session files' disk has less free
@@ -201,9 +369,11 @@ func (s *Store) Storage() Storage {
 	st.Free, st.Total, _ = diskSpace(s.dir)
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	st.Sessions = len(s.paths)
-	for _, p := range s.paths {
-		st.Used += fileSize(p)
+	_ = s.index.QueryRow(`SELECT COUNT(*), COALESCE(SUM(size), 0) FROM sessions`).Scan(&st.Sessions, &st.Used)
+	for id := range s.open { // listed with the size they started with
+		if path, err := s.path(id); err == nil {
+			st.Used += fileSize(path)
+		}
 	}
 	return st
 }
@@ -252,10 +422,10 @@ func safeName(name string) string {
 	return b.String()
 }
 
-// stamp is how a session file keeps a moment: UTC, RFC 3339 to 100 ns
-// ("2026-10-14T08:06:01.6065281Z"). Files of earlier builds hold local
-// time with its offset, which reads the same. Only file names use local
-// time, for people.
+// stamp is how deelook keeps a moment in its databases: UTC, RFC 3339 to
+// 100 ns ("2026-10-14T08:06:01.6065281Z"). Files of earlier builds hold
+// local time with its offset, which reads the same. Only file names use
+// local time, for people.
 func stamp(t time.Time) string { return t.UTC().Format(time.RFC3339Nano) }
 
 // Chunk is data read from the CNC for one channel.
@@ -282,12 +452,14 @@ type SessionInfo struct {
 	Size        int64      `json:"size"`   // its size in bytes
 }
 
-// CreateSession starts a session's file and keeps it open for writing.
+// CreateSession starts a session's file, lists it, and keeps it open for
+// writing.
 func (s *Store) CreateSession(machine, name string, cfg Config, started time.Time) (int64, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	id := s.next
-	path := filepath.Join(s.dir, fmt.Sprintf("%s_%s_s%d.db", started.Local().Format("20060102-150405"), safeName(name), id))
+	file := fmt.Sprintf("%s_%s_s%d.db", started.Local().Format("20060102-150405"), safeName(name), id)
+	path := filepath.Join(s.dir, file)
 	db, err := sql.Open("sqlite", dsn(path, true))
 	if err == nil {
 		db.SetMaxOpenConns(1) // one writer; readers open their own (withDB)
@@ -298,6 +470,10 @@ func (s *Store) CreateSession(machine, name string, cfg Config, started time.Tim
 		_, err = db.Exec(`INSERT INTO session (id, machine_id, machine_name, started_at, status, config) VALUES (?, ?, ?, ?, 'running', ?)`,
 			id, machine, name, stamp(started), string(c))
 	}
+	if err == nil {
+		err = s.list(SessionInfo{ID: id, Machine: machine, MachineName: name, StartedAt: started, Status: "running", Config: cfg},
+			file, 0, "")
+	}
 	if err != nil {
 		if db != nil {
 			db.Close()
@@ -305,21 +481,9 @@ func (s *Store) CreateSession(machine, name string, cfg Config, started time.Tim
 		os.Remove(path)
 		return 0, fmt.Errorf("session file %s: %w", path, err)
 	}
-	s.next++
-	s.paths[id] = path
 	s.open[id] = db
 	s.noteID(id)
 	return id, nil
-}
-
-// lastIDFile, in the session folder, keeps the highest session number given
-// out, so a deleted session's number never comes back.
-const lastIDFile = "last-session-id"
-
-// noteID records id as given out; s.mu is held (or s not shared yet). A
-// folder it cannot write to only loses the guard.
-func (s *Store) noteID(id int64) {
-	_ = os.WriteFile(filepath.Join(s.dir, lastIDFile), []byte(strconv.FormatInt(id, 10)+"\n"), 0o644)
 }
 
 func (s *Store) writer(id int64) (*sql.DB, error) {
@@ -365,8 +529,8 @@ func (s *Store) Add(id int64, chunks []Chunk, events []Event) error {
 	return tx.Commit()
 }
 
-// FinishSession records how a session ended and closes its file, folding
-// the write-ahead log in so the file stands alone.
+// FinishSession records how a session ended, closes its file, folding the
+// write-ahead log in so the file stands alone, and lists it as it is now.
 func (s *Store) FinishSession(id int64, status, errText string, ended time.Time, samples []int64) error {
 	db, err := s.writer(id)
 	if err != nil {
@@ -381,18 +545,34 @@ func (s *Store) FinishSession(id int64, status, errText string, ended time.Time,
 	_, _ = db.Exec(`PRAGMA wal_checkpoint(TRUNCATE)`)
 	_, _ = db.Exec(`PRAGMA journal_mode = DELETE`)
 	cerr := db.Close()
-	s.mu.Lock()
-	delete(s.open, id)
-	delete(s.cache, s.paths[id])
-	s.mu.Unlock()
 	if err == nil {
 		err = cerr
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	delete(s.open, id)
+	path, perr := s.path(id)
+	if perr == nil {
+		info, rerr := readSession(path)
+		fi, serr := os.Stat(path)
+		if rerr == nil && serr == nil {
+			perr = s.list(info, filepath.Base(path), fi.Size(), stamp(fi.ModTime()))
+		}
+	}
+	if err == nil {
+		err = perr
 	}
 	return err
 }
 
-const sessionColumns = `id, machine_id, machine_name, started_at, ended_at, status, error, config, samples,
-	(SELECT COUNT(*) FROM events)`
+// path is a listed session's file; s.mu is held.
+func (s *Store) path(id int64) (string, error) {
+	var file string
+	if err := s.index.QueryRow(`SELECT file FROM sessions WHERE id = ?`, id).Scan(&file); err != nil {
+		return "", fmt.Errorf("no session %d", id)
+	}
+	return filepath.Join(s.dir, file), nil
+}
 
 func scanSession(row interface{ Scan(...any) error }) (SessionInfo, error) {
 	var si SessionInfo
@@ -411,71 +591,63 @@ func scanSession(row interface{ Scan(...any) error }) (SessionInfo, error) {
 	return si, nil
 }
 
-// read reads a closed session file's row, through the cache; s.mu is held
-// (or s not shared yet).
-func (s *Store) read(path string) (SessionInfo, error) {
-	fi, err := os.Stat(path)
-	if err != nil {
-		return SessionInfo{}, err
-	}
-	if c, ok := s.cache[path]; ok && c.mod.Equal(fi.ModTime()) && c.size == fi.Size() {
-		return c.info, nil
-	}
-	db, err := sql.Open("sqlite", dsn(path, false))
-	if err != nil {
-		return SessionInfo{}, err
-	}
-	defer db.Close()
-	info, err := scanSession(db.QueryRow(`SELECT ` + sessionColumns + ` FROM session`))
-	if err != nil {
-		return info, err
-	}
-	info.File, info.Size = filepath.Base(path), fileSize(path)
-	s.cache[path] = cachedRow{mod: fi.ModTime(), size: fi.Size(), info: info}
-	return info, nil
-}
+const listColumns = `id, machine_id, machine_name, started_at, ended_at, status, error, config, samples, events, file, size`
 
-// info is a session's row: live for one being written; s.mu is held.
-func (s *Store) info(id int64) (SessionInfo, error) {
-	path, ok := s.paths[id]
-	if !ok {
-		return SessionInfo{}, fmt.Errorf("no session %d", id)
+// scanListed reads a session's entry; s.mu is held.
+func (s *Store) scanListed(row interface{ Scan(...any) error }) (SessionInfo, error) {
+	var si SessionInfo
+	var started, cfg, samples string
+	var ended sql.NullString
+	if err := row.Scan(&si.ID, &si.Machine, &si.MachineName, &started, &ended, &si.Status, &si.Error, &cfg,
+		&samples, &si.Events, &si.File, &si.Size); err != nil {
+		return si, err
 	}
-	if db := s.open[id]; db != nil {
-		info, err := scanSession(db.QueryRow(`SELECT ` + sessionColumns + ` FROM session`))
-		info.File, info.Size = filepath.Base(path), fileSize(path)
-		return info, err
+	si.StartedAt, _ = time.Parse(time.RFC3339Nano, started)
+	if ended.Valid {
+		t, _ := time.Parse(time.RFC3339Nano, ended.String)
+		si.EndedAt = &t
 	}
-	return s.read(path)
+	_ = json.Unmarshal([]byte(cfg), &si.Config)
+	_ = json.Unmarshal([]byte(samples), &si.Samples)
+	if db := s.open[si.ID]; db != nil { // listed as it started: size and marks as they are now
+		si.Size = fileSize(filepath.Join(s.dir, si.File))
+		_ = db.QueryRow(`SELECT COUNT(*) FROM events`).Scan(&si.Events)
+	}
+	return si, nil
 }
 
 // Sessions lists the newest sessions first, of one machine or ("") all.
 func (s *Store) Sessions(machine string, limit int) ([]SessionInfo, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	ids := make([]int64, 0, len(s.paths))
-	for id := range s.paths {
-		ids = append(ids, id)
+	if err := s.reconcile(); err != nil {
+		return nil, err
 	}
-	slices.SortFunc(ids, func(a, b int64) int { return cmp.Compare(b, a) })
+	rows, err := s.index.Query(`SELECT `+listColumns+` FROM sessions WHERE ? = '' OR machine_id = ?
+		ORDER BY id DESC LIMIT ?`, machine, machine, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
 	out := []SessionInfo{}
-	for _, id := range ids {
-		info, err := s.info(id)
-		if err != nil || (machine != "" && info.Machine != machine) {
-			continue
+	for rows.Next() {
+		si, err := s.scanListed(rows)
+		if err != nil {
+			return nil, err
 		}
-		out = append(out, info)
-		if len(out) == limit {
-			break
-		}
+		out = append(out, si)
 	}
-	return out, nil
+	return out, rows.Err()
 }
 
 func (s *Store) Session(id int64) (SessionInfo, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return s.info(id)
+	si, err := s.scanListed(s.index.QueryRow(`SELECT `+listColumns+` FROM sessions WHERE id = ?`, id))
+	if errors.Is(err, sql.ErrNoRows) {
+		return si, fmt.Errorf("no session %d", id)
+	}
+	return si, err
 }
 
 // File is a finished session's file, for download.
@@ -485,30 +657,29 @@ func (s *Store) File(id int64) (string, error) {
 	if s.open[id] != nil {
 		return "", errors.New("the session is still sampling")
 	}
-	path, ok := s.paths[id]
-	if !ok {
-		return "", fmt.Errorf("no session %d", id)
-	}
-	return path, nil
+	return s.path(id)
 }
 
-// Delete removes a finished session's file.
+// Delete removes a finished session's file and its entry.
 func (s *Store) Delete(id int64) error {
-	path, err := s.File(id)
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.open[id] != nil {
+		return errors.New("the session is still sampling")
+	}
+	path, err := s.path(id)
 	if err != nil {
 		return err
 	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
 	if err := os.Remove(path); err != nil && !errors.Is(err, os.ErrNotExist) {
 		return err
 	}
 	for _, p := range []string{path + "-wal", path + "-shm", path + "-journal"} {
 		os.Remove(p)
 	}
-	delete(s.paths, id)
-	delete(s.cache, path)
-	return nil
+	_, err = s.index.Exec(`DELETE FROM sessions WHERE id = ?`, id)
+	clear(s.ignored) // a file left out for this number may be listed now
+	return err
 }
 
 // withDB runs fn on a session's file opened for reading: a connection of
@@ -516,10 +687,10 @@ func (s *Store) Delete(id int64) error {
 // both go on), so a long CSV export never holds up the writer.
 func (s *Store) withDB(id int64, fn func(db *sql.DB) error) error {
 	s.mu.Lock()
-	path, ok := s.paths[id]
+	path, err := s.path(id)
 	s.mu.Unlock()
-	if !ok {
-		return fmt.Errorf("no session %d", id)
+	if err != nil {
+		return err
 	}
 	db, err := sql.Open("sqlite", dsn(path, false))
 	if err != nil {
@@ -534,15 +705,9 @@ func (s *Store) withDB(id int64, fn func(db *sql.DB) error) error {
 func (s *Store) maxLocalSessionID() (int, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	n := 0
-	for id := range s.paths {
-		if info, err := s.info(id); err == nil && strings.HasPrefix(info.Machine, "L") {
-			if k, err := strconv.Atoi(info.Machine[1:]); err == nil {
-				n = max(n, k)
-			}
-		}
-	}
-	return n, nil
+	var n sql.NullInt64
+	err := s.index.QueryRow(`SELECT MAX(CAST(SUBSTR(machine_id, 2) AS INTEGER)) FROM sessions WHERE machine_id GLOB 'L[0-9]*'`).Scan(&n)
+	return int(n.Int64), err
 }
 
 // takeOldMachines hands over the machine list an older single database
@@ -556,8 +721,9 @@ func (s *Store) takeOldMachines() ([]machine, time.Time, error) {
 }
 
 // migrate moves the sessions of an older single database to files of their
-// own (keeping their ids where free), takes its machine list, and removes
-// it once every session's samples and marks are found in the new file.
+// own (keeping their numbers where free), takes its machine list, and
+// removes it once every session's samples and marks are found in the new
+// file. The new files are listed by the reconcile after it.
 func (s *Store) migrate(legacy string) error {
 	old, err := sql.Open("sqlite", dsn(legacy, true))
 	if err != nil {
@@ -625,8 +791,8 @@ func (s *Store) migrateSession(legacy string, old *sql.DB, oldID int64) error {
 	}
 	at, _ := time.Parse(time.RFC3339Nano, started)
 	id := oldID
-	if _, taken := s.paths[id]; taken {
-		id = s.next
+	if _, err := s.path(id); err == nil {
+		id = s.next // the number is a listed session's already
 	}
 	path := filepath.Join(s.dir, fmt.Sprintf("%s_%s_s%d.db", at.Local().Format("20060102-150405"), safeName(name), id))
 	db, err := sql.Open("sqlite", strings.Replace(dsn(path, true), "journal_mode(WAL)", "journal_mode(DELETE)", 1))
@@ -669,9 +835,7 @@ func (s *Store) migrateSession(legacy string, old *sql.DB, oldID int64) error {
 	if _, err := db.Exec(`DETACH DATABASE old`); err != nil {
 		return err
 	}
-	s.paths[id] = path
-	s.next = max(s.next, id+1)
-	s.noteID(s.next - 1)
+	s.noteID(id)
 	return nil
 }
 

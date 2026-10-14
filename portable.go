@@ -29,34 +29,6 @@ import (
 // settingsName is the settings file read from the executable's folder.
 const settingsName = "deelook.toml"
 
-// machinesName is the file beside the sampling database (deelook-data/)
-// where deelook keeps the machines it can sample: the hub's as last
-// received, and those added in deelook.
-const machinesName = "machines.json"
-
-// oldMachinesName is what machinesName was called while it sat next to
-// the executable (and briefly in deelook-data/).
-const oldMachinesName = "deelook-machines.json"
-
-// moveFile moves from to to when from exists and to does not; a failure
-// is logged, not fatal.
-func moveFile(from, to string) {
-	if _, err := os.Stat(from); err != nil {
-		return
-	}
-	if _, err := os.Stat(to); err == nil {
-		return
-	}
-	if err := os.MkdirAll(filepath.Dir(to), 0o755); err == nil {
-		err = os.Rename(from, to)
-		if err == nil {
-			log.Printf("moved %s to %s", from, to)
-			return
-		}
-		log.Printf("moving %s to %s: %v", from, to, err)
-	}
-}
-
 // settingsTemplate is a settings file with every setting at its default,
 // commented out, written where none is.
 //

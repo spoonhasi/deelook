@@ -275,7 +275,7 @@ func TestStoreLegacy(t *testing.T) {
 	old.Close()
 
 	sessions := filepath.Join(dir, "sessions")
-	st, err := OpenStore(sessions, legacy)
+	st, err := OpenStore(dir, legacy)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -312,6 +312,7 @@ func TestStoreLowDisk(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer st.Close()
 	if st.lowDisk() != nil {
 		t.Error("minimum 0 stopped sampling")
 	}
@@ -425,5 +426,102 @@ func TestConfigChannels2(t *testing.T) {
 	cond, trg := cfg.trigger()
 	if cond != focas.TrgSeq|focas.TrgUp || trg.SeqNo != 10 || trg.Pmc != y04 {
 		t.Errorf("trigger %#x %+v", cond, trg)
+	}
+}
+
+// TestStoreReconcile: the session list follows the sessions folder, and a
+// lost deelook.db is rebuilt from the files.
+func TestStoreReconcile(t *testing.T) {
+	dir := t.TempDir()
+	st, err := OpenStore(dir, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg := Config{Mode: "basic", ServoPeriodUs: 1000, Channels: []ChannelConfig{{Kind: "servo", Axis: 1, Type: 3, Label: "X"}}}
+	record := func(st *Store, started time.Time) int64 {
+		t.Helper()
+		id, err := st.CreateSession("2", "bench", cfg, started)
+		if err == nil {
+			err = st.Add(id, []Chunk{{Channel: 0, Data: []uint16{1, 2}, ReceivedAt: started}}, nil)
+		}
+		if err == nil {
+			err = st.FinishSession(id, "stopped", "", started.Add(time.Second), []int64{2})
+		}
+		if err != nil {
+			t.Fatal(err)
+		}
+		return id
+	}
+	ids := func(st *Store) []int64 {
+		t.Helper()
+		list, err := st.Sessions("", 100)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var out []int64
+		for _, s := range list {
+			out = append(out, s.ID)
+		}
+		return out
+	}
+	a := record(st, time.Now())
+	b := record(st, time.Now().Add(time.Second))
+
+	// a file deleted by hand leaves the list
+	pa, _ := st.File(a)
+	if err := os.Remove(pa); err != nil {
+		t.Fatal(err)
+	}
+	if got := ids(st); !slices.Equal(got, []int64{b}) {
+		t.Errorf("after deleting %d by hand: %v", a, got)
+	}
+
+	// session files of another deelook put in by hand: listed unless the
+	// number is taken (its first session has a's free number, its second
+	// b's)
+	other, err := OpenStore(t.TempDir(), "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	o1, o2 := record(other, time.Now()), record(other, time.Now())
+	p1, _ := other.File(o1)
+	p2, _ := other.File(o2)
+	other.Close()
+	for _, c := range [][2]string{{p1, "imported_s1.db"}, {p2, "imported_s2.db"}} {
+		raw, _ := os.ReadFile(c[0])
+		if err := os.WriteFile(filepath.Join(dir, "sessions", c[1]), raw, 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if got := ids(st); !slices.Equal(got, []int64{b, o1}) {
+		t.Errorf("after putting files in: %v, want [%d %d]", got, b, o1)
+	}
+	if info, _ := st.Session(o1); info.File != "imported_s1.db" || info.Samples[0] != 2 {
+		t.Errorf("imported session %+v", info)
+	}
+
+	// once b is deleted, the file left out for b's number is listed
+	if err := st.Delete(b); err != nil {
+		t.Fatal(err)
+	}
+	if got := ids(st); !slices.Equal(got, []int64{o2, o1}) {
+		t.Errorf("after deleting %d: %v, want [%d %d]", b, got, o2, o1)
+	}
+
+	// deelook.db lost: rebuilt from the files, numbering above them
+	st.Close()
+	for _, f := range []string{indexName, indexName + "-wal", indexName + "-shm"} {
+		os.Remove(filepath.Join(dir, f))
+	}
+	st, err = OpenStore(dir, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	if got := ids(st); !slices.Equal(got, []int64{o2, o1}) {
+		t.Errorf("rebuilt list %v", got)
+	}
+	if next := record(st, time.Now()); next != o2+1 {
+		t.Errorf("next session %d after a rebuild, want %d", next, o2+1)
 	}
 }

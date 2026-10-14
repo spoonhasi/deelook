@@ -23,7 +23,7 @@ timeout = "5s"
 
 # 데이터 폴더. 상대 경로는 이 파일이 있는 폴더 기준
 #   sessions\   수집 한 건마다 SQLite 파일 하나 (넘겨줄 때는 그 파일만)
-#   machines.json  수집할 기계 목록과 IP
+#   deelook.db  deelook 내부용: 세션 목록, 세션 번호, 기계 목록과 IP (넘겨주지 않음)
 data = "deelook-data"
 
 # 데이터 폴더가 있는 디스크의 남은 공간이 이보다 적으면 수집을 시작하지 않고, 수집 중이면 멈춤. "0" 이면 보지 않음
