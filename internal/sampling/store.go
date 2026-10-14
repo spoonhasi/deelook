@@ -114,6 +114,12 @@ func (s *Store) scan() error {
 	if err != nil {
 		return err
 	}
+	// numbers of deleted sessions are not given out again
+	if b, err := os.ReadFile(filepath.Join(s.dir, lastIDFile)); err == nil {
+		if n, err := strconv.ParseInt(strings.TrimSpace(string(b)), 10, 64); err == nil {
+			s.next = max(s.next, n+1)
+		}
+	}
 	for _, e := range entries {
 		m := sessionFile.FindStringSubmatch(e.Name())
 		if m == nil || e.IsDir() {
@@ -246,6 +252,12 @@ func safeName(name string) string {
 	return b.String()
 }
 
+// stamp is how a session file keeps a moment: UTC, RFC 3339 to 100 ns
+// ("2026-10-14T08:06:01.6065281Z"). Files of earlier builds hold local
+// time with its offset, which reads the same. Only file names use local
+// time, for people.
+func stamp(t time.Time) string { return t.UTC().Format(time.RFC3339Nano) }
+
 // Chunk is data read from the CNC for one channel.
 type Chunk struct {
 	Channel    int
@@ -284,7 +296,7 @@ func (s *Store) CreateSession(machine, name string, cfg Config, started time.Tim
 	if err == nil {
 		c, _ := json.Marshal(cfg)
 		_, err = db.Exec(`INSERT INTO session (id, machine_id, machine_name, started_at, status, config) VALUES (?, ?, ?, ?, 'running', ?)`,
-			id, machine, name, started.Format(time.RFC3339Nano), string(c))
+			id, machine, name, stamp(started), string(c))
 	}
 	if err != nil {
 		if db != nil {
@@ -296,7 +308,18 @@ func (s *Store) CreateSession(machine, name string, cfg Config, started time.Tim
 	s.next++
 	s.paths[id] = path
 	s.open[id] = db
+	s.noteID(id)
 	return id, nil
+}
+
+// lastIDFile, in the session folder, keeps the highest session number given
+// out, so a deleted session's number never comes back.
+const lastIDFile = "last-session-id"
+
+// noteID records id as given out; s.mu is held (or s not shared yet). A
+// folder it cannot write to only loses the guard.
+func (s *Store) noteID(id int64) {
+	_ = os.WriteFile(filepath.Join(s.dir, lastIDFile), []byte(strconv.FormatInt(id, 10)+"\n"), 0o644)
 }
 
 func (s *Store) writer(id int64) (*sql.DB, error) {
@@ -329,13 +352,13 @@ func (s *Store) Add(id int64, chunks []Chunk, events []Event) error {
 		for i, w := range c.Data {
 			binary.LittleEndian.PutUint16(blob[2*i:], w)
 		}
-		if _, err := st.Exec(c.Channel, c.First, len(c.Data), c.ReceivedAt.Format(time.RFC3339Nano), blob); err != nil {
+		if _, err := st.Exec(c.Channel, c.First, len(c.Data), stamp(c.ReceivedAt), blob); err != nil {
 			return err
 		}
 	}
 	for _, e := range events {
 		if _, err := tx.Exec(`INSERT INTO events (time_us, bits, received_at) VALUES (?, ?, ?)`,
-			e.TimeUs, e.Bits, e.At.Format(time.RFC3339Nano)); err != nil {
+			e.TimeUs, e.Bits, stamp(e.At)); err != nil {
 			return err
 		}
 	}
@@ -351,7 +374,7 @@ func (s *Store) FinishSession(id int64, status, errText string, ended time.Time,
 	}
 	n, _ := json.Marshal(samples)
 	_, err = db.Exec(`UPDATE session SET status = ?, error = ?, ended_at = ?, samples = ?`,
-		status, errText, ended.Format(time.RFC3339Nano), string(n))
+		status, errText, stamp(ended), string(n))
 	// back to a plain journal: the file then stands alone. With a reader
 	// still open this waits for it (busy_timeout) or fails; SQLite folds
 	// the log in anyway when the last connection closes.
@@ -648,6 +671,7 @@ func (s *Store) migrateSession(legacy string, old *sql.DB, oldID int64) error {
 	}
 	s.paths[id] = path
 	s.next = max(s.next, id+1)
+	s.noteID(s.next - 1)
 	return nil
 }
 

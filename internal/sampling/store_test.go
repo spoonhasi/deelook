@@ -92,6 +92,14 @@ func TestStoreCSV(t *testing.T) {
 	if st.Storage().Sessions != 1 || st.Storage().Used == 0 {
 		t.Errorf("storage %+v", st.Storage())
 	}
+	// inside, moments are UTC; only the file name is local time
+	db, _ := sql.Open("sqlite", dsn(path, false))
+	var startedAt, endedAt, receivedAt string
+	_ = db.QueryRow(`SELECT started_at, ended_at, (SELECT MIN(received_at) FROM chunks) FROM session`).Scan(&startedAt, &endedAt, &receivedAt)
+	db.Close()
+	if startedAt != started.UTC().Format(time.RFC3339Nano) || !strings.HasSuffix(endedAt, "Z") || !strings.HasSuffix(receivedAt, "Z") {
+		t.Errorf("times in the file: %q %q %q", startedAt, endedAt, receivedAt)
+	}
 
 	// a deelook started later finds it; deleting removes the file
 	st2, err := OpenStore(dir, "")
@@ -109,6 +117,21 @@ func TestStoreCSV(t *testing.T) {
 	}
 	if list, _ := st2.Sessions("", 10); len(list) != 0 {
 		t.Errorf("after delete: %+v", list)
+	}
+	// the deleted session's number is not given out again, even by a
+	// deelook started later with no session file left
+	st2.Close()
+	st3, err := OpenStore(dir, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st3.Close()
+	next, err := st3.CreateSession("2", "bench", cfg, time.Now())
+	if err != nil || next != id+1 {
+		t.Errorf("next session %d %v, want %d", next, err, id+1)
+	}
+	if err := st3.FinishSession(next, "stopped", "", time.Now(), nil); err != nil {
+		t.Fatal(err)
 	}
 }
 
