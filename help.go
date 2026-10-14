@@ -95,11 +95,15 @@ func (h *help) status(ctx context.Context) string {
 	hmi, _ := screens.Get("fanuc")
 	shown := "" // the machine_id /hmi shows without ?machine=
 	if hubErr == nil {
+		setting := fmt.Sprintf("설정 `machine = %q`", h.defMachine)
+		if h.defMachine == "" {
+			setting += ": 번호가 가장 작은 FANUC 기계"
+		}
 		if m, err := pickMachine(ms, hmi, h.defMachine); err != nil {
-			line("`/hmi`가 기본으로 보여 줄 기계 (설정 `machine = %q`): **없음** (%s)", h.defMachine, code(err.Error()))
+			line("`/hmi`가 기본으로 보여 줄 기계 (%s): **없음** (%s)", setting, code(err.Error()))
 		} else {
 			shown = strconv.Itoa(m.ID)
-			line("`/hmi`가 기본으로 보여 줄 기계 (설정 `machine = %q`): %s %s", h.defMachine, shown, code(m.Name))
+			line("`/hmi`가 기본으로 보여 줄 기계 (%s): %s %s", setting, shown, code(m.Name))
 		}
 	}
 

@@ -36,7 +36,7 @@ func TestHelp(t *testing.T) {
 		t.Fatal(err)
 	}
 	hc := hub.New(hubSrv.URL, 5*time.Second)
-	h := &help{hub: hc, hubURL: hubSrv.URL, defMachine: "auto", dataDir: dir,
+	h := &help{hub: hc, hubURL: hubSrv.URL, defMachine: "", dataDir: dir,
 		sampler: sampling.NewManager(hc, st, ms, nil, "Fwlib64.dll", errors.New("not found"))}
 
 	get := func(path, accept string) *httptest.ResponseRecorder {
@@ -51,7 +51,7 @@ func TestHelp(t *testing.T) {
 	for _, c := range []struct{ path, accept, typ, want string }{
 		{"/", "*/*", "text/markdown", "## 페이지"},
 		{"/help", "", "text/markdown", "| 1 | bench-31i | 허브 `nc_focas2_fanuc` | `/hmi?machine=1` (`/hmi`의 기본), `/sampling` |"},
-		{"/help", "", "text/markdown", "`/hmi`가 기본으로 보여 줄 기계 (설정 `machine = \"auto\"`): 1 `bench-31i`"},
+		{"/help", "", "text/markdown", "`/hmi`가 기본으로 보여 줄 기계 (설정 `machine = \"\"`: 번호가 가장 작은 FANUC 기계): 1 `bench-31i`"},
 		{"/help", "", "text/markdown", "| 2 | mill | 허브 `nc_opcua_siemens` | 없음 (FANUC가 아님) |"},
 		{"/help", "text/html,application/xhtml+xml", "text/html", "<table>"},
 		{"/", "text/html", "text/html", `<a href="/hmi">`},

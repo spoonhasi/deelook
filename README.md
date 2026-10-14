@@ -240,7 +240,7 @@ bin/deelook-windows-amd64/deelook.exe -hub http://127.0.0.1:8080 -machine 2 -lam
 |---|---|---|
 | `-listen` | `:8090` | 웹 서버 주소 |
 | `-hub` | `http://127.0.0.1:8080` | deemesh-hub 주소 |
-| `-machine` | `auto` | 주소에 machine이 없을 때 HMI 화면에 보여 줄 기계: machine_id, 이름, 또는 `auto`(허브 목록에서 번호가 가장 작은 FANUC 기계) |
+| `-machine` | (없음) | 주소에 machine이 없을 때 HMI 화면에 보여 줄 기계: machine_id 또는 이름. 없으면 허브 목록에서 번호가 가장 작은 FANUC 기계 |
 | `-interval` | `1s` | 한 화면을 읽는 간격 |
 | `-timeout` | `5s` | 한 번 읽을 때 허브 쪽 제한 시간 |
 | `-lamps` | (없음) | PMC로 램프를 읽을 기계: `1=ncguide,13=ncguide` (`deelook.toml`에서는 `[lamps]` 표) |

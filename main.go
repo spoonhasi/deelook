@@ -193,8 +193,8 @@ func main() {
 	}
 }
 
-// resolveMachine turns a machine_id, machine_name or "auto" into the
-// machine_id. Only machines on the hub's list are ever polled.
+// resolveMachine turns a machine_id or machine_name, or "" for the first
+// machine, into the machine_id. Only machines on the hub's list are ever polled.
 func resolveMachine(ctx context.Context, hc *hub.Client, def *screens.Def, machine string) (string, error) {
 	ms, err := hc.Machines(ctx)
 	if err != nil {
@@ -208,10 +208,11 @@ func resolveMachine(ctx context.Context, hc *hub.Client, def *screens.Def, machi
 }
 
 // pickMachine finds a machine_id or machine_name on the hub's list, or for
-// "auto" the lowest-numbered machine the screen is drawn for, and refuses
-// machines it is not drawn for.
+// "" the lowest-numbered machine the screen is drawn for, and refuses
+// machines it is not drawn for. ("" rather than a word like "auto", which
+// could be a machine's name.)
 func pickMachine(ms []hub.Machine, def *screens.Def, machine string) (hub.Machine, error) {
-	if machine == "auto" {
+	if machine == "" {
 		var pick *hub.Machine
 		for i, m := range ms {
 			if def.Accepts(m.Protocol) && (pick == nil || m.ID < pick.ID) {
