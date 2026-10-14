@@ -68,7 +68,7 @@ func OpenStore(path string) (*Store, error) {
 	if err != nil {
 		return nil, err
 	}
-	if _, err := db.Exec(schema + machineSchema); err != nil {
+	if _, err := db.Exec(schema); err != nil {
 		db.Close()
 		return nil, fmt.Errorf("sampling database %s: %w", path, err)
 	}
@@ -81,6 +81,52 @@ func OpenStore(path string) (*Store, error) {
 }
 
 func (s *Store) Close() error { return s.db.Close() }
+
+// takeOldMachines moves out the machine list an older deelook kept in this
+// database (with CNC addresses): it returns the rows and when the hub's list
+// was last received, drops the table and compacts the file so none of it
+// stays in free pages or the write-ahead log.
+func (s *Store) takeOldMachines() ([]machine, time.Time, error) {
+	var n int
+	if err := s.db.QueryRow(`SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'machines'`).Scan(&n); err != nil || n == 0 {
+		return nil, time.Time{}, err
+	}
+	rows, err := s.db.Query(`SELECT id, source, name, host, port, axes, spindles, paths, updated_at FROM machines`)
+	if err != nil {
+		return nil, time.Time{}, err
+	}
+	var out []machine
+	var synced time.Time
+	for rows.Next() {
+		var mc machine
+		var axes, spindles, at string
+		if err := rows.Scan(&mc.ID, &mc.Source, &mc.Name, &mc.Host, &mc.Port, &axes, &spindles, &mc.Paths, &at); err != nil {
+			rows.Close()
+			return nil, time.Time{}, err
+		}
+		_ = json.Unmarshal([]byte(axes), &mc.Axes)
+		_ = json.Unmarshal([]byte(spindles), &mc.Spindles)
+		if t, _ := time.Parse(time.RFC3339Nano, at); mc.Source == "hub" && t.After(synced) {
+			synced = t
+		}
+		out = append(out, mc)
+	}
+	rows.Close()
+	for _, q := range []string{`DROP TABLE machines`, `VACUUM`, `PRAGMA wal_checkpoint(TRUNCATE)`} {
+		if _, err := s.db.Exec(q); err != nil {
+			return nil, time.Time{}, fmt.Errorf("moving the machine list out of the database: %s: %w", q, err)
+		}
+	}
+	return out, synced, nil
+}
+
+// maxLocalSessionID is the highest n of the machine ids L<n> (machines
+// added in deelook) that recorded sessions keep, 0 if none.
+func (s *Store) maxLocalSessionID() (int, error) {
+	var n sql.NullInt64
+	err := s.db.QueryRow(`SELECT MAX(CAST(SUBSTR(machine_id, 2) AS INTEGER)) FROM sessions WHERE machine_id GLOB 'L[0-9]*'`).Scan(&n)
+	return int(n.Int64), err
+}
 
 // Chunk is data read from the CNC for one channel.
 type Chunk struct {

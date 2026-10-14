@@ -27,6 +27,10 @@ import (
 // settingsName is the settings file read from the executable's folder.
 const settingsName = "deelook.toml"
 
+// machinesName is the file next to it where deelook keeps the machines it
+// can sample (the hub's as last received, and those added in deelook).
+const machinesName = "deelook-machines.json"
+
 // settingsTemplate is a settings file with every setting at its default,
 // commented out, written where none is.
 //

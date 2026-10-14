@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"deelook/internal/focas"
-	"deelook/internal/hub"
 )
 
 func TestStoreCSV(t *testing.T) {
@@ -214,54 +213,5 @@ func TestConfigChannels2(t *testing.T) {
 	cond, trg := cfg.trigger()
 	if cond != focas.TrgSeq|focas.TrgUp || trg.SeqNo != 10 || trg.Pmc != y04 {
 		t.Errorf("trigger %#x %+v", cond, trg)
-	}
-}
-
-func TestStoreMachines(t *testing.T) {
-	st, err := OpenStore(filepath.Join(t.TempDir(), "s.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer st.Close()
-	now := time.Now()
-	hubList := []hub.Machine{
-		{ID: 2, Name: "bench-31i", Protocol: fanucProtocol, Host: "10.0.0.2", Port: 8193},
-		{ID: 5, Name: "bench-840d", Protocol: "nc_opcua_siemens", Host: "10.0.0.5", Port: 4840},
-		{ID: 1, Name: "sim", Protocol: fanucProtocol, Host: "10.0.0.1", Port: 8193},
-	}
-	if err := st.syncHub(hubList, now); err != nil {
-		t.Fatal(err)
-	}
-	if err := st.setNames("2", []string{"X1", "X2"}, []string{"S1"}, 2); err != nil {
-		t.Fatal(err)
-	}
-	id, err := st.addLocal("lathe", "10.0.0.9", 8193, []string{"X", "Z"}, []string{"S1"}, 1)
-	if err != nil || id != "L1" {
-		t.Fatalf("addLocal %q %v", id, err)
-	}
-	// the hub drops machine 1 and moves machine 2: names stay, 1 goes
-	if err := st.syncHub([]hub.Machine{{ID: 2, Name: "bench-31i", Protocol: fanucProtocol, Host: "10.0.0.22", Port: 8193}}, now); err != nil {
-		t.Fatal(err)
-	}
-	list, err := st.machines()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(list) != 2 || list[0].ID != "2" || list[0].Host != "10.0.0.22" || !slices.Equal(list[0].Axes, []string{"X1", "X2"}) ||
-		list[1].ID != "L1" || list[1].Source != "local" || list[1].Paths != 1 {
-		t.Fatalf("machines %+v", list)
-	}
-	if st.deleteLocal("2") == nil {
-		t.Error("deleted a hub machine")
-	}
-	// L1 recorded a session: after it is removed, a new machine is L2
-	if _, err := st.CreateSession("L1", "lathe", Config{Mode: "basic"}, now); err != nil {
-		t.Fatal(err)
-	}
-	if err := st.deleteLocal("L1"); err != nil {
-		t.Error(err)
-	}
-	if id, _ := st.addLocal("mill", "10.0.0.8", 8193, nil, nil, 0); id != "L2" {
-		t.Errorf("next local id %q", id)
 	}
 }

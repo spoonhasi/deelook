@@ -209,11 +209,10 @@ func (m *Manager) handleMachines(w http.ResponseWriter, r *http.Request) {
 	if hubErr != nil {
 		out.Hub.Error = hubErr.Error()
 	}
+	if t := m.list.hubSyncedAt(); !t.IsZero() {
+		out.Hub.SyncedAt = &t
+	}
 	for _, mc := range list {
-		if mc.Source == "hub" && !mc.UpdatedAt.IsZero() && (out.Hub.SyncedAt == nil || mc.UpdatedAt.After(*out.Hub.SyncedAt)) {
-			t := mc.UpdatedAt
-			out.Hub.SyncedAt = &t
-		}
 		mi := MachineInfo{Machine: mc.ID, Name: mc.Name, Source: mc.Source, Axes: mc.Axes, Spindles: mc.Spindles, Paths: mc.Paths}
 		if mi.Axes == nil {
 			mi.Axes = []string{}
@@ -240,7 +239,7 @@ func (m *Manager) handleMachines(w http.ResponseWriter, r *http.Request) {
 			err := m.axes(r, &fresh)
 			if err == nil && len(fresh.Axes) > 0 {
 				mi.Axes, mi.Spindles, mi.Paths = fresh.Axes, fresh.Spindles, fresh.Paths
-				_ = m.store.setNames(mi.Machine, fresh.Axes, fresh.Spindles, fresh.Paths)
+				_ = m.list.setNames(mi.Machine, fresh.Axes, fresh.Spindles, fresh.Paths)
 			} else if err != nil && len(mi.Axes) == 0 {
 				mi.Note = "axis names from deemesh: " + err.Error()
 			}

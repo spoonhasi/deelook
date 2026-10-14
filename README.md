@@ -55,7 +55,7 @@ deemesh-hub에 `nc_focas2_fanuc` 프로토콜로 등록된 기계는 모두 대�
 기계 목록과 접속 정보(IP·포트)는 허브의 `/machineList`에서 받지만, 수집 자체는 deelook이 CNC에 직접 FOCAS2로 연결하므로
 **허브 없이도 됩니다.**
 
-- 허브에서 받은 Fanuc 기계 목록(IP·포트, 축 이름)은 받을 때마다 SQLite(`-db`)에 저장합니다. 허브에 연결이 안 되면 화면에
+- 허브에서 받은 Fanuc 기계 목록(IP·포트, 축 이름)은 실행 파일 옆 `deelook-machines.json`에 저장합니다. 허브에 연결이 안 되면 화면에
   알림을 띄우고 마지막으로 받은 목록으로 수집합니다. 허브 목록에서 빠진 기계는 다음에 목록을 받을 때 같이 빠집니다.
 - 허브에 없는 기계는 화면의 **기계 관리**에서 이름·IP·FOCAS2 포트로 직접 추가합니다(번호 `L1`, `L2`…). 추가할 때 연결해서
   축·주축 이름을 FOCAS2(`cnc_getpath`, `cnc_setpath`, `cnc_rdaxisname`, `cnc_rdspdlname`)로 읽으므로 기계가 켜져 있어야 합니다.
@@ -82,6 +82,9 @@ deemesh-hub에 `nc_focas2_fanuc` 프로토콜로 등록된 기계는 모두 대�
   채널마다 고른 데이터의 단위 전부가 그 밑에 나오고, FOCAS2 오류 메시지에는 한국어 설명이 붙습니다.
 - CSV: `time_ms`(첫 샘플부터), 채널마다 한 열(PMC 비트는 신호마다 0/1 한 열), 트리거가 있으면 `trigger` 열(그 시점의 비트).
 - 저장: `-db`(기본 `deelook-data/sampling.db`). 세션 하나 = 시작~종료, 샘플은 채널별 묶음(BLOB), 트리거는 따로.
+  **이 DB에는 수집 데이터만 들어갑니다**(세션, 샘플, 트리거, 기계 번호·이름). CNC의 IP·포트가 든 기계 목록은 따로
+  `deelook-machines.json`에 있으므로, 데이터가 필요한 사람에게는 `sampling.db` 파일만 복사해 주면 됩니다.
+  (예전 판이 DB에 넣어 두었던 기계 목록은 처음 실행할 때 그 파일로 옮기고 DB를 압축해 흔적을 지웁니다.)
   1 ms·8채널이면 시간당 약 58 MB입니다.
 - CNC 한 대에서 샘플링은 하나만 돌 수 있습니다. Servo Guide를 쓰는 중이면 CNC가 거부합니다.
   deelook을 끄면 진행 중인 샘플링을 CNC에서 멈추고 나갑니다.
@@ -178,6 +181,7 @@ deelook\
   deelook.exe
   Fwlib64.dll, fwlibe64.dll   ← FANUC FOCAS2 (직접 구해 넣음, 이더넷 연결은 이 둘이면 됨)
   deelook.toml          ← 설정 (없으면 처음 실행할 때 기본값으로 생김)
+  deelook-machines.json ← 수집할 기계 목록과 IP (deelook이 관리, 허브 없을 때 씀)
   deelook-data\         ← 수집 데이터 (처음 실행할 때 생김)
 ```
 

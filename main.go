@@ -100,7 +100,13 @@ func main() {
 		fatal("%v", err)
 	}
 	defer store.Close()
-	sampler := sampling.NewManager(hc, store, lib, libPath, libErr)
+	// the machine list (with CNC addresses) stays with the settings, out of
+	// the database that is handed around
+	machines, err := sampling.OpenMachines(filepath.Join(exeDir, machinesName), store)
+	if err != nil {
+		fatal("%v", err)
+	}
+	sampler := sampling.NewManager(hc, store, machines, lib, libPath, libErr)
 	defer sampler.Close() // never leave sampling running on a CNC
 	sampler.Routes(mux)
 	if lib != nil {

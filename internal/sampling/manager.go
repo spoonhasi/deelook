@@ -18,6 +18,7 @@ import (
 type Manager struct {
 	hub     *hub.Client
 	store   *Store
+	list    *Machines  // the machines that can sample (machines.go)
 	lib     *focas.Lib // nil: no FOCAS2 library, no sampling
 	libPath string     // where the library was looked for
 	libErr  error      // why there is none
@@ -35,8 +36,8 @@ const fanucProtocol = "nc_focas2_fanuc"
 // lib is nil when deelook found no usable FOCAS2 library (libErr says why,
 // libPath is where it looked): then the machine list, recorded sessions and
 // the reference still work, and every call that needs the CNC says so.
-func NewManager(c *hub.Client, store *Store, lib *focas.Lib, libPath string, libErr error) *Manager {
-	return &Manager{hub: c, store: store, lib: lib, libPath: libPath, libErr: libErr,
+func NewManager(c *hub.Client, store *Store, list *Machines, lib *focas.Lib, libPath string, libErr error) *Manager {
+	return &Manager{hub: c, store: store, list: list, lib: lib, libPath: libPath, libErr: libErr,
 		runs: map[string]*run{}, busy: map[string]bool{}}
 }
 
