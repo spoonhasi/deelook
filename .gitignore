@@ -17,3 +17,5 @@ deelook-machines.json
 # a "go build ." in the repository root
 /deelook
 /deelook.exe
+# Windows resources made by build.sh
+*.syso

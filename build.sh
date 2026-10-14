@@ -5,7 +5,12 @@
 # repository: see fwlib/README.md), and a deelook.toml to edit. Copy a
 # folder and run: deelook keeps its settings (deelook.toml) and data
 # (deelook-data/) in that folder.
-# Needs Node (npm) and Go on PATH.
+# Needs Node (npm) and Go on PATH (Go fetches go-winres the first time).
+#
+# The Windows executable carries version information and a manifest
+# (winres/winres.json; the version is the date of the commit) and keeps
+# its symbols: antivirus heuristics take a stripped Go executable without
+# them for malware more readily.
 #
 # Sampling (cnc_sdt*) is required, so only targets with a FOCAS2 library
 # that has it are built:
@@ -21,6 +26,12 @@ if [ ! -d web/node_modules ]; then
 fi
 (cd web && npm run build)
 
+# rsrc_windows_amd64.syso: linked into the windows/amd64 build only
+version="$(git log -1 --format=%cd --date=format:%Y.%m.%d 2>/dev/null || echo 0.0.0).0"
+trap 'rm -f rsrc_windows_*.syso' EXIT
+go run github.com/tc-hib/go-winres@v0.3.3 make --in winres/winres.json --arch amd64 --out rsrc \
+  --product-version "$version" --file-version "$version"
+
 mkdir -p bin
 for target in windows/amd64 linux/386 linux/arm; do
   os=${target%/*}
@@ -32,8 +43,10 @@ for target in windows/amd64 linux/386 linux/arm; do
   rm -f "$dir/deelook" "$dir/deelook.exe" "$dir"/*.dll "$dir"/libfwlib32.so*
   exe="$dir/deelook"
   [ "$os" = windows ] && exe="$exe.exe"
-  CGO_ENABLED=0 GOOS=$os GOARCH=$arch GOARM=7 go build -trimpath -ldflags "-s -w" -o "$exe" .
-  # the settings file, all defaults commented out; never over one in use
+  ldflags="-s -w"
+  [ "$os" = windows ] && ldflags="" # symbols kept (see above)
+  CGO_ENABLED=0 GOOS=$os GOARCH=$arch GOARM=7 go build -trimpath -ldflags "$ldflags" -o "$exe" .
+  # the settings file with the default values; never over one in use
   [ -e "$dir/deelook.toml" ] || cp deelook.example.toml "$dir/deelook.toml"
   case $target in
     windows/amd64) libs=(fwlib/windows-x64/Fwlib64.dll fwlib/windows-x64/fwlibe64.dll) ;;

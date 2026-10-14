@@ -13,7 +13,6 @@ import (
 	"log"
 	"net"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"runtime"
 	"sort"
@@ -81,7 +80,7 @@ func defineFlags(fs *flag.FlagSet) options {
 		timeout:  fs.Duration("timeout", 5*time.Second, "hub-side limit for one poll"),
 		lamps:    fs.String("lamps", "", "operator panel lamps read from the PMC, per machine_id: \"1=ncguide,13=ncguide\" (others follow machine-independent values)"),
 		fwlib:    fs.String("fwlib", "", "FOCAS2 library for sampling, of the executable's bitness (empty: Fwlib64.dll / libfwlib32.so* next to the executable)"),
-		data:     fs.String("data", "", "folder for sampling data: sessions/ (one SQLite file each) and machines.json (empty: deelook-data next to the executable)"),
+		data:     fs.String("data", "", "folder for sampling data: sessions/ (one SQLite file each) and deelook.db (empty: deelook-data next to the executable)"),
 		db:       fs.String("db", "", deprecated+"the single database of earlier builds; its folder is the data folder and its sessions move to files of their own"),
 		open:     fs.Bool("open", doubleClicked, "open the page in a browser once listening (default: when started by double-click on Windows)"),
 	}
@@ -218,24 +217,6 @@ func pageURL(addr net.Addr) string {
 		host = "localhost"
 	}
 	return "http://" + net.JoinHostPort(host, port) + "/"
-}
-
-// openBrowser shows url in the default browser.
-func openBrowser(url string) {
-	var cmd *exec.Cmd
-	switch runtime.GOOS {
-	case "windows":
-		cmd = exec.Command("rundll32", "url.dll,FileProtocolHandler", url)
-	case "linux":
-		cmd = exec.Command("xdg-open", url)
-	default:
-		return
-	}
-	if err := cmd.Start(); err != nil {
-		log.Printf("open a browser at %s (%v)", url, err)
-		return
-	}
-	go func() { _ = cmd.Wait() }()
 }
 
 // fatal stops deelook at startup. Started by double-click, the console
