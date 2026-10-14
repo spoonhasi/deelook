@@ -3,9 +3,9 @@
 //
 // It also records servo/spindle data sampled by Fanuc CNCs (FOCAS2 cnc_sdt*)
 // into SQLite, over its own FOCAS2 connection, on any machine the hub lists
-// as nc_focas2_fanuc. Sampling is part of every deelook: it does not start
-// without a FOCAS2 library that has cnc_sdt* (Windows 64-bit, Linux 32-bit
-// builds).
+// as nc_focas2_fanuc. That needs FANUC's FOCAS2 library with cnc_sdt*
+// (Windows 64-bit, Linux 32-bit builds), which deelook cannot ship: without
+// it the HMI screens work and the sampling page says what to put where.
 package main
 
 import (
@@ -95,19 +95,23 @@ func main() {
 	if libPath == "" {
 		libPath = focas.FindLibrary(exeDir)
 	}
-	lib, err := focas.Load(libPath)
-	if err != nil {
-		fatal("FOCAS2 library (needed for sampling; -fwlib; not in the repository, see fwlib/README.md): %v", err)
+	lib, libErr := focas.Load(libPath)
+	if libErr != nil {
+		lib = nil
+		log.Printf("no FOCAS2 library, so no sampling (the HMI screens work): %v", libErr)
+		log.Printf("for sampling, put %s next to the executable or set fwlib in %s (fwlib/README.md)", libraryFiles(), settingsName)
 	}
 	store, err := sampling.OpenStore(*dbPath)
 	if err != nil {
 		fatal("%v", err)
 	}
 	defer store.Close()
-	sampler := sampling.NewManager(hc, store, lib)
+	sampler := sampling.NewManager(hc, store, lib, libPath, libErr)
 	defer sampler.Close() // never leave sampling running on a CNC
 	sampler.Routes(mux)
-	log.Printf("FOCAS2 %s (%s); sampling on the hub's %s machines; database %s", lib.Path, lib.Version, "nc_focas2_fanuc", *dbPath)
+	if lib != nil {
+		log.Printf("FOCAS2 %s (%s); sampling on the hub's nc_focas2_fanuc machines; database %s", lib.Path, lib.Version, *dbPath)
+	}
 	mux.HandleFunc("GET /api/screens/{screen}/stream", func(w http.ResponseWriter, r *http.Request) {
 		def, ok := screens.Get(r.PathValue("screen"))
 		if !ok {

@@ -142,6 +142,14 @@ func settingValue(key string, v any) (string, error) {
 	return "", errors.New("unknown setting")
 }
 
+// libraryFiles names the FOCAS2 files sampling needs on this platform.
+func libraryFiles() string {
+	if runtime.GOOS == "windows" {
+		return "Fwlib64.dll and fwlibe64.dll"
+	}
+	return "libfwlib32.so (32-bit)"
+}
+
 // pageURL is where a browser on this PC finds deelook listening on addr.
 func pageURL(addr net.Addr) string {
 	host, port, err := net.SplitHostPort(addr.String())

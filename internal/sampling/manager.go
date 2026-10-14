@@ -16,9 +16,11 @@ import (
 // Manager runs at most one sampling session per machine: any Fanuc machine
 // on the hub's list, or added in deelook (machines.go).
 type Manager struct {
-	hub   *hub.Client
-	store *Store
-	lib   *focas.Lib
+	hub     *hub.Client
+	store   *Store
+	lib     *focas.Lib // nil: no FOCAS2 library, no sampling
+	libPath string     // where the library was looked for
+	libErr  error      // why there is none
 
 	mu   sync.Mutex
 	runs map[string]*run // latest run per machine, finished ones included
@@ -30,14 +32,30 @@ type Manager struct {
 // fanucProtocol is the hub protocol of the machines that can sample.
 const fanucProtocol = "nc_focas2_fanuc"
 
-func NewManager(c *hub.Client, store *Store, lib *focas.Lib) *Manager {
-	return &Manager{hub: c, store: store, lib: lib, runs: map[string]*run{}, busy: map[string]bool{}}
+// lib is nil when deelook found no usable FOCAS2 library (libErr says why,
+// libPath is where it looked): then the machine list, recorded sessions and
+// the reference still work, and every call that needs the CNC says so.
+func NewManager(c *hub.Client, store *Store, lib *focas.Lib, libPath string, libErr error) *Manager {
+	return &Manager{hub: c, store: store, lib: lib, libPath: libPath, libErr: libErr,
+		runs: map[string]*run{}, busy: map[string]bool{}}
+}
+
+// needLib is the error of a call that needs the FOCAS2 library when there
+// is none.
+func (m *Manager) needLib() error {
+	if m.lib == nil {
+		return fmt.Errorf("no FOCAS2 library, so no sampling: %v", m.libErr)
+	}
+	return nil
 }
 
 // Start starts a session and returns once sampling runs on the CNC (or
 // failed to).
 func (m *Manager) Start(ctx context.Context, id string, cfg Config) (Status, error) {
 	if err := cfg.Validate(); err != nil {
+		return Status{}, err
+	}
+	if err := m.needLib(); err != nil {
 		return Status{}, err
 	}
 	if cfg.extended() && !m.lib.Extended() {
@@ -275,6 +293,9 @@ func (m *Manager) ReadOnce(ctx context.Context, id string, req OneShot) (OneShot
 		cfg.ServoPeriodUs = 1000
 	}
 	if err := cfg.Validate(); err != nil {
+		return OneShotResult{}, err
+	}
+	if err := m.needLib(); err != nil {
 		return OneShotResult{}, err
 	}
 	t, err := m.target(ctx, id)

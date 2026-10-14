@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"mime"
 	"net/http"
+	"runtime"
 	"strconv"
 	"sync"
 	"time"
@@ -204,8 +205,7 @@ func (m *Manager) handleMachines(w http.ResponseWriter, r *http.Request) {
 		Library  map[string]any `json:"library"`
 		Hub      hubState       `json:"hub"`
 		Machines []MachineInfo  `json:"machines"`
-	}{Library: map[string]any{"path": m.lib.Path, "version": m.lib.Version, "extended": m.lib.Extended()},
-		Hub: hubState{OK: hubErr == nil}, Machines: []MachineInfo{}}
+	}{Library: m.libraryInfo(), Hub: hubState{OK: hubErr == nil}, Machines: []MachineInfo{}}
 	if hubErr != nil {
 		out.Hub.Error = hubErr.Error()
 	}
@@ -253,6 +253,17 @@ func (m *Manager) handleMachines(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	writeJSON(w, out)
+}
+
+// libraryInfo tells the browser about the FOCAS2 library: loaded (path,
+// version, whether it has the cnc_sdt*2 calls), or not and why.
+func (m *Manager) libraryInfo() map[string]any {
+	if m.lib == nil {
+		return map[string]any{"available": false, "path": m.libPath, "error": m.libErr.Error(),
+			"windows": runtime.GOOS == "windows"}
+	}
+	return map[string]any{"available": true, "path": m.lib.Path, "version": m.lib.Version,
+		"extended": m.lib.Extended(), "windows": runtime.GOOS == "windows"}
 }
 
 // axes reads axis and spindle names through deemesh. FOCAS numbers them

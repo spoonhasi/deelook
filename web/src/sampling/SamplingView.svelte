@@ -82,6 +82,9 @@
   const active = $derived(!!status && ['starting', 'waiting', 'running', 'stopping'].includes(status.state))
   const ext = $derived(form.mode === 'extended')
   const extOk = $derived(!!library?.extended)
+  // without the FOCAS2 library nothing reaches the CNC: the page still shows
+  // the machines, recorded sessions and the reference
+  const libOk = $derived(library?.available !== false)
 
   const typed = (k: Kind): k is TypedKind => k === 'servo' || k === 'spindle' || k === 'cnc'
   const typeOf = (kind: Kind, t: number) => (typed(kind) ? types[kind].find((d) => d.type === t) : undefined)
@@ -537,6 +540,27 @@
   <div class="cols">
     <section class="card setup">
       <h2>수집 설정</h2>
+      {#if !libOk && library}
+        <div class="nolib">
+          <p><b>FOCAS2 라이브러리가 없어 시계열 수집을 쓸 수 없습니다.</b> HMI 화면은 deemesh로 그대로 됩니다.</p>
+          <p>
+            고속 샘플링(<code>cnc_sdt*</code>)은 FANUC의 FOCAS2 라이브러리로 CNC에 직접 연결합니다. FANUC의 파일이라 deelook에 들어 있지
+            않으니, 구해서 넣고 deelook을 다시 시작하세요.
+          </p>
+          <ul>
+            {#if library.windows}
+              <li><code>Fwlib64.dll</code>과 <code>fwlibe64.dll</code>을 <code>deelook.exe</code> 옆에 둡니다 (이더넷 연결은 이 둘이면 됨).</li>
+            {:else}
+              <li>32비트 <code>libfwlib32.so</code>를 deelook 실행 파일 옆에 둡니다 (32비트 libc·libstdc++ 필요).</li>
+            {/if}
+            <li>다른 곳에 있으면 <code>deelook.toml</code>에 <code>fwlib = '…'</code>로 그 파일을 지정합니다.</li>
+            <li>
+              시험한 판과 해시: <a href="https://github.com/spoonhasi/deelook/blob/main/fwlib/README.md" target="_blank" rel="noreferrer">fwlib/README.md</a>
+            </li>
+          </ul>
+          <p class="hint">찾은 곳: {library.path}<br />{library.error}</p>
+        </div>
+      {/if}
       {#if !hub.ok}
         <p class="warn">
           ⚠ deemesh-hub에 연결할 수 없습니다. {hub.syncedAt ? `마지막으로 받은 기계 목록(${time(hub.syncedAt)})과` : ''} 여기서 직접 추가한
@@ -567,7 +591,7 @@
       <details class="manage" open={loaded && !machines.length}>
         <summary>기계 관리 <span class="hint">허브 없이 IP로 추가 · 축 이름 읽기</span></summary>
         <div class="row">
-          <button onclick={readNames} disabled={manageBusy || active || !machineId}>축 이름을 CNC에서 읽기</button>
+          <button onclick={readNames} disabled={manageBusy || active || !machineId || !libOk}>축 이름을 CNC에서 읽기</button>
           {#if machine?.source === 'local'}
             <button class="danger" onclick={deleteMachine} disabled={manageBusy || active}>이 기계 지우기</button>
           {/if}
@@ -577,7 +601,7 @@
           <input type="text" bind:value={adding.name} placeholder="이름" aria-label="새 기계 이름" class="mname" />
           <input type="text" bind:value={adding.host} placeholder="IP 주소" aria-label="새 기계 IP 주소" class="mhost" />
           <input type="number" bind:value={adding.port} min="1" max="65535" aria-label="FOCAS2 포트" class="wide" />
-          <button onclick={addMachine} disabled={manageBusy || !adding.host.trim()}>추가</button>
+          <button onclick={addMachine} disabled={manageBusy || !adding.host.trim() || !libOk}>추가</button>
         </div>
         <p class="hint">
           허브에 없는 Fanuc 기계를 IP와 FOCAS2 포트(보통 8193)로 추가합니다. 추가할 때 연결해서 축 이름을 읽으므로 기계가 켜져 있어야 합니다.
@@ -603,7 +627,7 @@
           서보·주축 데이터를 모읍니다. 종료할 때까지 또는 정한 점 수만큼, 즉시 또는 지정한 블록(N 번호)이 실행될 때부터
           시작할 수 있습니다.
         {/if}
-        {#if !extOk && library}
+        {#if library?.available && !extOk}
           <br />확장 방식: 이 라이브러리({library.version})에는 cnc_sdt*2 함수가 없습니다 (리눅스 32비트 J555 라이브러리가 그렇습니다).
         {/if}
       </p>
@@ -748,7 +772,7 @@
         </ul>
       {/if}
       <div class="actions">
-        <button class="primary" onclick={start} disabled={busy || active || !machineId || !!machine?.error || problems.length > 0}>수집 시작</button>
+        <button class="primary" onclick={start} disabled={busy || active || !machineId || !!machine?.error || problems.length > 0 || !libOk}>수집 시작</button>
         <button class="danger" onclick={stop} disabled={busy || !active}>수집 종료</button>
       </div>
       {#if message}{@render err(message)}{/if}
@@ -764,7 +788,7 @@
       <h3>현재값 한 번 읽기 <small>cnc_sdtread1shot</small></h3>
       <p class="hint">수집 없이 위 채널(서보·주축만)의 지금 값을 읽습니다: 연결 → cnc_sdtsetchnl → cnc_sdtread1shot → cnc_sdtclrchnl → 해제.</p>
       <div class="row">
-        <button onclick={readOnce} disabled={active || busy || shotBusy || !shotChannels.length || !!machine?.error}>읽기</button>
+        <button onclick={readOnce} disabled={active || busy || shotBusy || !shotChannels.length || !!machine?.error || !libOk}>읽기</button>
         <label class="opt"><input type="checkbox" bind:checked={shotRepeat} disabled={active || busy || !shotChannels.length} />1초마다</label>
         {#if shot}<span class="hint">{clock(shot.at)}</span>{/if}
       </div>
@@ -826,7 +850,8 @@
         {/if}
         {#if status.error}{@render err(status.error)}{/if}
       {/if}
-      {#if library?.version}<p class="hint">FOCAS2 라이브러리 {library.version}{library.extended ? ' · cnc_sdt*2 있음' : ' · cnc_sdt*2 없음'}</p>{/if}
+      {#if library?.available}<p class="hint">FOCAS2 라이브러리 {library.version}{library.extended ? ' · cnc_sdt*2 있음' : ' · cnc_sdt*2 없음'}</p>
+      {:else if library}<p class="hint">FOCAS2 라이브러리 없음 — 수집할 수 없음</p>{/if}
 
       {#if live.channels.length}
         <div class="charts">
@@ -1144,6 +1169,21 @@
   }
   input.mhost {
     width: 130px;
+  }
+  .nolib {
+    border: 1px solid #9a6700;
+    background: #2b2416;
+    border-radius: 6px;
+    padding: 8px 12px;
+    margin: 0 0 12px;
+    font-size: 13px;
+  }
+  .nolib p {
+    margin: 4px 0;
+  }
+  .nolib ul {
+    margin: 4px 0;
+    padding-left: 18px;
   }
   .explain {
     color: var(--text-secondary);

@@ -57,9 +57,12 @@ export interface Config {
 }
 
 export interface Library {
+  available: boolean // false: no FOCAS2 library, no sampling (error says why, path is where it looked)
   path: string
-  version: string
-  extended: boolean // has cnc_sdt*2
+  version?: string
+  extended?: boolean // has cnc_sdt*2
+  error?: string
+  windows: boolean // the server runs on Windows
 }
 
 export interface MachineInfo {
