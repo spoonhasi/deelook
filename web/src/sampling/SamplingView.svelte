@@ -661,8 +661,8 @@
       <label class="row">
         <span>서보 주기</span>
         <select bind:value={form.servoPeriodUs} disabled={locked}>
-          <option value={1000}>1 ms</option>
-          <option value={250}>0.25 ms</option>
+          <option value={1000}>1 ms (1 kHz)</option>
+          <option value={250}>0.25 ms (4 kHz)</option>
         </select>
         <span class="hint">주축은 항상 1 ms, CNC 정보는 4 ms마다 갱신</span>
       </label>
