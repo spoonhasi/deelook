@@ -78,7 +78,7 @@ func TestSettingsTemplate(t *testing.T) {
 
 	dir := t.TempDir()
 	path := filepath.Join(dir, settingsName)
-	if !writeSettingsTemplate(path) {
+	if !writeSettingsTemplate(path, settingsTemplate) {
 		t.Fatal("no template written")
 	}
 	if err := loadSettings(fs, path); err != nil {
@@ -110,11 +110,27 @@ func TestSettingsTemplate(t *testing.T) {
 	if err := os.WriteFile(path, []byte(mine), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if writeSettingsTemplate(path) {
+	if writeSettingsTemplate(path, settingsTemplate) {
 		t.Error("wrote over a settings file")
 	}
 	if b, _ := os.ReadFile(path); string(b) != mine {
 		t.Errorf("settings file changed: %q", b)
+	}
+}
+
+// A deelook.toml.default next to the executable (the Linux package's) is
+// written in place of the template.
+func TestSettingsDefault(t *testing.T) {
+	exeDir := t.TempDir()
+	if string(settingsDefault(exeDir)) != string(settingsTemplate) {
+		t.Error("none there: not the template")
+	}
+	const pkg = "data = \"/var/lib/deelook\"\n"
+	if err := os.WriteFile(filepath.Join(exeDir, settingsDefaultName), []byte(pkg), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if b := settingsDefault(exeDir); string(b) != pkg {
+		t.Errorf("got %q", b)
 	}
 }
 

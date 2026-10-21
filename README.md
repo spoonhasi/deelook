@@ -249,6 +249,28 @@ deelook\
   이 PC에서만 쓸 거면 `listen = "127.0.0.1:8090"`.
 - 인터넷에서 받은 서명 없는 실행 파일이라 SmartScreen이 막으면 "추가 정보 → 실행"을 누릅니다.
 
+### Linux: 패키지(.deb)로 설치 (서비스)
+
+x86 PC(32비트 deelook, 64비트 Ubuntu·Debian에서도 됨)에 `deelook_<판>_i386.deb`로 설치합니다. 켜질 때 서비스로 돌고,
+꺼지면 3초 뒤 다시 켜집니다. 브라우저는 열지 않으니 `http://<그 PC>:8090/`으로 들어갑니다.
+
+```bash
+sudo dpkg --add-architecture i386 && sudo apt update   # 64비트 Linux에서 한 번 (32비트 libc·libstdc++를 받으려고)
+sudo apt install ./deelook_0.1.0_i386.deb
+```
+
+| 어디 | 무엇 |
+|---|---|
+| `/opt/deelook/deelook` | 프로그램 (`deelook -version`) |
+| `/etc/deelook/deelook.toml` | 설정. 처음 설치할 때 기본값으로 생기고(데이터 폴더만 `/var/lib/deelook`), 업그레이드해도 그대로. 고친 뒤 `sudo systemctl restart deelook` |
+| `/var/lib/deelook/` | 데이터 폴더 (`sessions/`, `deelook.db`, 화면에서 올린 FOCAS2 라이브러리 `fwlib/`) |
+| `deelook.service` | `deelook` 사용자로 실행. 로그는 `journalctl -u deelook` |
+
+- FOCAS2 라이브러리는 패키지에 없습니다. 시계열 수집 화면에서 `libfwlib32.so.1.0.2`를 올리면 다시 시작하지 않아도 바로
+  씁니다(또는 `/opt/deelook/`에 넣고 다시 시작).
+- `sudo apt remove deelook`은 프로그램만, `sudo apt purge deelook`은 설정(`/etc/deelook`)까지 지웁니다. 수집 데이터
+  (`/var/lib/deelook`)는 어느 쪽이든 남으니 필요 없으면 직접 지웁니다.
+
 ### 명령줄
 
 ```bash
@@ -278,6 +300,7 @@ bin/deelook-windows-amd64/deelook.exe -hub http://127.0.0.1:8080 -machine 2 -lam
 | `-data` | 실행 파일 옆 `deelook-data` | 데이터 폴더: `sessions\`(수집 한 건마다 SQLite 파일), `deelook.db`(목록·기계) |
 | `-minfree` | `1GB` | 데이터 폴더 디스크의 남은 공간이 이보다 적으면 수집을 시작하지 않거나 멈춤 (`0`: 보지 않음) |
 | `-open` | 더블클릭으로 실행했을 때만 | 시작하면 브라우저로 도움말(`/`) 열기 |
+| `-version` | | 판 번호를 찍고 끝냄 |
 
 - 보는 브라우저가 몇 개든 (기계, 화면)마다 허브를 한 번만 읽습니다. 화면을 바꾸면 그 화면에 필요한 값만 읽고, 아무도 보지 않으면 5초 뒤에 읽기를 멈춥니다.
 - 허브와 다른 PC에서 돌리면 그 PC의 IP를 허브 설정 `allowed_ips_read`에 넣어야 합니다.
@@ -291,12 +314,20 @@ Node(npm)와 Go가 필요합니다.
 ```
 
 `bin/` 아래에 대상마다 폴더가 생기고, 실행 파일과 그 대상의 FOCAS2 라이브러리가 함께 들어갑니다. 폴더째 복사해 실행하면 됩니다.
+판 번호는 [`VERSION`](VERSION)에 있고(`0.1.0`), 실행 파일·로그·도움말에 찍힙니다.
 
 | 폴더 | 용도 |
 |---|---|
 | `deelook-windows-amd64/` | Windows 64비트 |
 | `deelook-linux-386/` | Linux 32비트 (64비트 Linux에서도 32비트 `libc`·`libstdc++`·`libgcc_s`가 있으면 동작) |
 | `deelook-linux-arm/` | 32비트 ARM Linux (기기에서 시험하지 않음) |
+
+Linux 패키지는 그다음에 만듭니다(Go가 처음에 [nfpm](https://nfpm.goreleaser.com)을 받음). 들어가는 것은
+[`packaging/linux/`](packaging/linux/nfpm.yaml)에 있습니다.
+
+```bash
+./package-deb.sh   # build.sh 다음 dist/deelook_<판>_i386.deb
+```
 
 ## 개발
 

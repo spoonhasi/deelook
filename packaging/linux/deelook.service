@@ -1,0 +1,23 @@
+[Unit]
+Description=deelook (FANUC HMI screens and high-speed sampling)
+Documentation=https://github.com/spoonhasi/deelook
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+User=deelook
+Group=deelook
+ExecStart=/opt/deelook/deelook -config /etc/deelook/deelook.toml
+WorkingDirectory=/var/lib/deelook
+Restart=always
+RestartSec=3
+# deelook writes only its settings (the deemesh-hub address set on the
+# page) and its data folder
+ProtectSystem=full
+ReadWritePaths=/etc/deelook /var/lib/deelook
+ProtectHome=true
+PrivateTmp=true
+NoNewPrivileges=true
+
+[Install]
+WantedBy=multi-user.target

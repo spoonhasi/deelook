@@ -8,7 +8,7 @@
 # Needs Node (npm) and Go on PATH (Go fetches go-winres the first time).
 #
 # The Windows executable carries version information and a manifest
-# (winres/winres.json; the version is the date of the commit) and keeps
+# (winres/winres.json; the version is VERSION's) and keeps
 # its symbols: antivirus heuristics take a stripped Go executable without
 # them for malware more readily.
 #
@@ -26,11 +26,14 @@ if [ ! -d web/node_modules ]; then
 fi
 (cd web && npm run build)
 
+# the version is in VERSION: written into the executables (deelook
+# -version, the log, the help page) and the Linux package (package-deb.sh)
+version="$(tr -d ' \r\n' < VERSION)"
+
 # rsrc_windows_amd64.syso: linked into the windows/amd64 build only
-version="$(git log -1 --format=%cd --date=format:%Y.%m.%d 2>/dev/null || echo 0.0.0).0"
 trap 'rm -f rsrc_windows_*.syso' EXIT
 go run github.com/tc-hib/go-winres@v0.3.3 make --in winres/winres.json --arch amd64 --out rsrc \
-  --product-version "$version" --file-version "$version"
+  --product-version "$version.0" --file-version "$version.0"
 
 mkdir -p bin
 for target in windows/amd64 linux/386 linux/arm; do
@@ -43,8 +46,8 @@ for target in windows/amd64 linux/386 linux/arm; do
   rm -f "$dir/deelook" "$dir/deelook.exe" "$dir"/*.dll "$dir"/libfwlib32.so*
   exe="$dir/deelook"
   [ "$os" = windows ] && exe="$exe.exe"
-  ldflags="-s -w"
-  [ "$os" = windows ] && ldflags="" # symbols kept (see above)
+  ldflags="-X main.version=$version -s -w"
+  [ "$os" = windows ] && ldflags="-X main.version=$version" # symbols kept (see above)
   CGO_ENABLED=0 GOOS=$os GOARCH=$arch GOARM=7 go build -trimpath -ldflags "$ldflags" -o "$exe" .
   # the settings file with the default values; never over one in use
   [ -e "$dir/deelook.toml" ] || cp deelook.example.toml "$dir/deelook.toml"

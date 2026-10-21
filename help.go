@@ -87,7 +87,9 @@ func (h *help) status(ctx context.Context) string {
 
 	line("이 페이지를 만든 때: %s", time.Now().Format("2006-01-02 15:04:05 -07:00"))
 	if v := buildInfo(); v != "" {
-		line("deelook 빌드: %s", v)
+		line("deelook %s, 빌드: %s", version, v)
+	} else {
+		line("deelook %s", version)
 	}
 
 	hctx, cancel := context.WithTimeout(ctx, 2*time.Second)

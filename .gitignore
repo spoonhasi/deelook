@@ -1,4 +1,6 @@
 /bin/
+# Linux packages made by package-deb.sh
+/dist/
 web/node_modules/
 web/dist/*
 !web/dist/.gitkeep

@@ -60,6 +60,8 @@ _실행 중인 deelook의 `/help`에서는 여기에 허브 연결, FOCAS2 라�
 실행 파일 옆의 `deelook.toml`입니다(`deelook -config /etc/deelook/deelook.toml`처럼 다른 파일을 줄 수 있음). 없으면 처음 실행할 때
 지금 쓰이는 기본값으로 만들어집니다. 안의 상대 경로(`data`, `fwlib`)는 그 파일이 있는 폴더 기준입니다. 이름은 명령줄 옵션
 (`deelook -h`)과 같고, 명령줄로 준 값이 우선합니다. 바꾼 뒤 deelook을 다시 시작해야 적용됩니다(`hub`는 화면에서 바꾸면 바로).
+Linux 패키지(.deb)로 설치했으면 설정은 `/etc/deelook/deelook.toml`, 데이터 폴더는 `/var/lib/deelook`이고, 고친 뒤
+`sudo systemctl restart deelook`으로 다시 시작합니다.
 
 | 이름 | 기본값 | 뜻 |
 |---|---|---|

@@ -1,0 +1,64 @@
+# The Debian package of deelook for a Linux PC, made by package-deb.sh
+# (nfpm, https://nfpm.goreleaser.com; the version comes from VERSION).
+#
+#   /opt/deelook/deelook                   the program
+#   /opt/deelook/deelook.toml.default      the settings with their defaults
+#   /etc/deelook/deelook.toml              the settings in use (made from the
+#                                          default on the first install, kept
+#                                          by upgrades, removed by purge only)
+#   /var/lib/deelook/                      the data folder (sessions/,
+#                                          deelook.db, fwlib/), never removed
+#   deelook.service                        runs it as the user deelook
+#
+# The FANUC FOCAS2 library is not in the package: upload it on the
+# sampling page, or put it in /opt/deelook (fwlib/README.md).
+name: deelook
+arch: i386 # linux/386: FANUC's libfwlib32.so is 32-bit
+platform: linux
+version: ${VERSION}
+version_schema: semver
+section: misc
+priority: optional
+maintainer: spoonhasi <spoonhasi@gmail.com>
+description: |-
+  Web HMI screens and high-speed sampling for FANUC CNCs
+  deelook draws a FANUC HMI in the browser from deemesh-hub and records
+  FOCAS2 cnc_sdt* high-speed sampling into SQLite files.
+homepage: https://github.com/spoonhasi/deelook
+license: MIT
+
+depends:
+  - libc6
+  - libstdc++6 # the FOCAS2 library is C++
+  - libgcc-s1
+
+contents:
+  - src: dist/stage/deelook
+    dst: /opt/deelook/deelook
+    file_info:
+      mode: 0755
+  - src: dist/stage/deelook.toml.default
+    dst: /opt/deelook/deelook.toml.default
+    file_info:
+      mode: 0644
+  - src: packaging/linux/deelook.service
+    dst: /usr/lib/systemd/system/deelook.service
+    file_info:
+      mode: 0644
+  - src: LICENSE
+    dst: /usr/share/doc/deelook/copyright
+    file_info:
+      mode: 0644
+  - dst: /etc/deelook
+    type: dir
+    file_info:
+      mode: 0755
+  - dst: /var/lib/deelook
+    type: dir
+    file_info:
+      mode: 0750
+
+scripts:
+  postinstall: packaging/linux/postinstall.sh
+  preremove: packaging/linux/preremove.sh
+  postremove: packaging/linux/postremove.sh

@@ -34,15 +34,28 @@ const settingsName = "deelook.toml"
 //go:embed deelook.example.toml
 var settingsTemplate []byte
 
-// writeSettingsTemplate puts the template at path unless a file is there.
+// settingsDefaultName, next to the executable, takes the place of the
+// template: the Linux package's, whose data folder is /var/lib/deelook.
+const settingsDefaultName = settingsName + ".default"
+
+// settingsDefault is the settings file written where none is: exeDir's
+// deelook.toml.default, or the template.
+func settingsDefault(exeDir string) []byte {
+	if b, err := os.ReadFile(filepath.Join(exeDir, settingsDefaultName)); err == nil {
+		return b
+	}
+	return settingsTemplate
+}
+
+// writeSettingsTemplate puts template at path unless a file is there.
 // It reports whether it wrote one; a folder it cannot write to is no error
 // (deelook runs on its defaults).
-func writeSettingsTemplate(path string) bool {
+func writeSettingsTemplate(path string, template []byte) bool {
 	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o644)
 	if err != nil {
 		return false
 	}
-	_, err = f.Write(settingsTemplate)
+	_, err = f.Write(template)
 	if cerr := f.Close(); err == nil {
 		err = cerr
 	}

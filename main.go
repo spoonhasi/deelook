@@ -34,6 +34,10 @@ import (
 	"deelook/web"
 )
 
+// version is this build's, from the VERSION file (build.sh sets it); "dev"
+// for a plain go build.
+var version = "dev"
+
 func main() {
 	o := defineFlags(flag.CommandLine)
 	listen, hubURL, defMachine, interval, timeout := o.listen, o.hub, o.machine, o.interval, o.timeout
@@ -41,7 +45,12 @@ func main() {
 	// command line only: a settings file cannot name itself
 	config := flag.String("config", "", "settings file (empty: "+settingsName+" next to the executable); "+
 		"relative paths in it are taken from its folder")
+	showVersion := flag.Bool("version", false, "print the version and exit")
 	flag.Parse() // for -config; parsed again below, so the command line wins over the file
+	if *showVersion {
+		fmt.Println("deelook", version)
+		return
+	}
 	// the settings file first; where there is none, one with the defaults
 	// is put there to edit
 	exeDir := executableDir()
@@ -52,7 +61,7 @@ func main() {
 	if abs, err := filepath.Abs(settingsPath); err == nil {
 		settingsPath = abs
 	}
-	if writeSettingsTemplate(settingsPath) {
+	if writeSettingsTemplate(settingsPath, settingsDefault(exeDir)) {
 		log.Printf("wrote %s with the default settings, to edit", settingsPath)
 	}
 	if _, err := os.Stat(settingsPath); err != nil && *config != "" {
@@ -132,7 +141,8 @@ func main() {
 	if libErr != nil {
 		lib = nil
 		log.Printf("no FOCAS2 library, so no sampling (the HMI screens work): %v", libErr)
-		log.Printf("for sampling, put %s next to the executable or set fwlib in %s (fwlib/README.md)", libraryFiles(), settingsName)
+		log.Printf("for sampling, upload %s on the sampling page, or put it next to the executable or set fwlib in %s (fwlib/README.md)",
+			libraryFiles(), settingsName)
 	}
 	// the data folder: session files (what gets handed around) and
 	// deelook.db (the session list and the machine list with CNC addresses)
@@ -209,7 +219,7 @@ func main() {
 	if *hubURL == "" {
 		hubNote = "no deemesh-hub: no HMI screens, sampling on machines added by address"
 	}
-	log.Printf("deelook on %s (%s, poll every %s): open %s", *listen, hubNote, *interval, url)
+	log.Printf("deelook %s on %s (%s, poll every %s): open %s", version, *listen, hubNote, *interval, url)
 	if doubleClicked {
 		log.Printf("closing this window stops deelook")
 	}
