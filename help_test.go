@@ -36,7 +36,7 @@ func TestHelp(t *testing.T) {
 		t.Fatal(err)
 	}
 	hc := hub.New(hubSrv.URL, 5*time.Second)
-	h := &help{hub: hc, hubURL: hubSrv.URL, defMachine: "", dataDir: dir,
+	h := &help{hub: hc, defMachine: "", dataDir: dir,
 		sampler: sampling.NewManager(hc, st, ms, nil, "Fwlib64.dll", errors.New("not found"))}
 
 	get := func(path, accept string) *httptest.ResponseRecorder {

@@ -2,6 +2,7 @@ package sampling
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"mime"
@@ -14,6 +15,7 @@ import (
 	"time"
 
 	"deelook/internal/focas"
+	"deelook/internal/hub"
 )
 
 // Routes registers the sampling API.
@@ -294,6 +296,7 @@ func (m *Manager) handleMachines(w http.ResponseWriter, r *http.Request) {
 	list, hubErr := m.machines(r.Context())
 	type hubState struct {
 		OK       bool       `json:"ok"`
+		Off      bool       `json:"off,omitempty"` // no hub address: deelook runs without deemesh
 		Error    string     `json:"error,omitempty"`
 		SyncedAt *time.Time `json:"syncedAt,omitempty"` // when the hub's list was last received
 	}
@@ -304,6 +307,7 @@ func (m *Manager) handleMachines(w http.ResponseWriter, r *http.Request) {
 	}{Library: m.libraryInfo(), Hub: hubState{OK: hubErr == nil}, Machines: []MachineInfo{}}
 	if hubErr != nil {
 		out.Hub.Error = hubErr.Error()
+		out.Hub.Off = errors.Is(hubErr, hub.ErrNoHub)
 	}
 	if t := m.list.hubSyncedAt(); !t.IsZero() {
 		out.Hub.SyncedAt = &t

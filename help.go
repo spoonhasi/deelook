@@ -4,7 +4,9 @@ import (
 	"bytes"
 	"context"
 	_ "embed"
+	"errors"
 	"fmt"
+	"html"
 	"io"
 	"net/http"
 	"runtime/debug"
@@ -36,9 +38,8 @@ const statusLine = "_실행 중인 deelook의 `/help`에서는 여기에 허브 
 // FOCAS2 library, the machines, sampling and the disk. Machine addresses
 // stay out of it, as out of every page.
 type help struct {
-	hub        *hub.Client
-	hubURL     string
-	defMachine string // the machine setting: what /hmi shows without ?machine=
+	hub        *hub.Client // its address can change while deelook runs (hubsetting.go)
+	defMachine string      // the machine setting: what /hmi shows without ?machine=
 	sampler    *sampling.Manager
 	dataDir    string
 }
@@ -68,7 +69,13 @@ func (h *help) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	_, _ = io.WriteString(w, helpHead)
+	addr := strings.TrimPrefix(strings.TrimPrefix(h.hub.Base(), "http://"), "https://")
+	if addr == "" {
+		addr = "없음"
+	}
+	chip := fmt.Sprintf(`<span class="hub" title="바꾸기·지우기는 HMI 화면이나 시계열 수집 페이지의 오른쪽 위에서">deemesh-hub %s</span>`,
+		html.EscapeString(addr))
+	_, _ = io.WriteString(w, strings.Replace(helpHead, "<!--hub-->", chip, 1))
 	_, _ = body.WriteTo(w)
 	_, _ = io.WriteString(w, helpFoot)
 }
@@ -86,11 +93,14 @@ func (h *help) status(ctx context.Context) string {
 	hctx, cancel := context.WithTimeout(ctx, 2*time.Second)
 	ms, hubErr := h.hub.Machines(hctx)
 	cancel()
-	if hubErr != nil {
+	switch {
+	case errors.Is(hubErr, hub.ErrNoHub):
+		line("deemesh-hub: **쓰지 않음** (주소 없음) — HMI 화면은 나오지 않고, 시계열 수집은 직접 추가한 기계와 마지막으로 받은 허브 목록으로 됩니다. 주소는 페이지 오른쪽 위에서 넣습니다.")
+	case hubErr != nil:
 		line("deemesh-hub %s: **연결 안 됨** — HMI 화면이 나오지 않습니다. 시계열 수집은 마지막으로 받은 기계 목록으로 됩니다. (%s)",
-			code(h.hubURL), code(hubErr.Error()))
-	} else {
-		line("deemesh-hub %s: 연결됨, 기계 %d대", code(h.hubURL), len(ms))
+			code(h.hub.Base()), code(hubErr.Error()))
+	default:
+		line("deemesh-hub %s: 연결됨, 기계 %d대", code(h.hub.Base()), len(ms))
 	}
 	hmi, _ := screens.Get("fanuc")
 	shown := "" // the machine_id /hmi shows without ?machine=
@@ -258,6 +268,8 @@ const helpHead = `<!doctype html>
   .tabs a { padding: 6px 14px; color: #c8c8c8; text-decoration: none; border: 1px solid transparent;
     border-bottom: none; border-radius: 6px 6px 0 0; font-size: 14px; }
   .tabs a.on { color: #fff; background: #252525; border-color: #333; }
+  .tabs .hub { margin-left: auto; align-self: center; margin-bottom: 4px; padding: 3px 10px; border: 1px solid #444;
+    border-radius: 12px; font-size: 12px; color: #9a9a9a; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 50vw; }
   .help { max-width: 920px; margin: 0 auto; padding: 8px 16px 48px; line-height: 1.6; font-size: 15px; }
   .help h1 { color: #fff; font-size: 26px; margin: 16px 0 8px; }
   .help h2 { color: #fff; font-size: 19px; margin: 32px 0 8px; padding-bottom: 4px; border-bottom: 1px solid #333; }
@@ -279,6 +291,7 @@ const helpHead = `<!doctype html>
   <a href="/help" class="on" aria-current="page">도움말</a>
   <a href="/hmi">HMI 화면</a>
   <a href="/sampling">시계열 수집</a>
+  <!--hub-->
 </nav>
 <main class="help">
 `

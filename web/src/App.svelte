@@ -6,6 +6,7 @@
   // /help) is a page of the server's own.
   import HmiView from './HmiView.svelte'
   import { address } from './lib/address.svelte'
+  import HubButton from './lib/HubButton.svelte'
   import SamplingView from './sampling/SamplingView.svelte'
 
   const page = $derived(address.path.replace(/\/+$/, '') === '/sampling' ? 'sampling' : 'hmi')
@@ -23,6 +24,7 @@
     aria-current={page === 'hmi' ? 'page' : undefined}>HMI 화면</a>
   <a href={'/sampling' + address.search} onclick={(e) => go(e, '/sampling')} class:on={page === 'sampling'}
     aria-current={page === 'sampling' ? 'page' : undefined}>시계열 수집</a>
+  <HubButton />
 </nav>
 <main>
   {#if page === 'hmi'}

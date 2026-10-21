@@ -130,7 +130,8 @@ func main() {
 	defer sampler.Close() // never leave sampling running on a CNC
 	sampler.Routes(mux)
 	if lib != nil {
-		log.Printf("FOCAS2 %s (%s); sampling on the hub's nc_focas2_fanuc machines; data in %s", lib.Path, lib.Version, dataDir)
+		log.Printf("FOCAS2 %s (%s); sampling on the hub's nc_focas2_fanuc machines and those added by address; data in %s",
+			lib.Path, lib.Version, dataDir)
 	}
 	mux.HandleFunc("GET /api/screens/{screen}/stream", func(w http.ResponseWriter, r *http.Request) {
 		def, ok := screens.Get(r.PathValue("screen"))
@@ -156,8 +157,9 @@ func main() {
 		opt := screens.Options{Timeout: *timeout, Lamps: lamps[id]}
 		serveStream(w, r, broker, def, id, view, opt)
 	})
+	hubRoutes(mux, hc, settingsPath) // the hub address, changed from any page
 	// the manual at / and /help; the app draws /hmi and /sampling
-	manual := &help{hub: hc, hubURL: *hubURL, defMachine: *defMachine, sampler: sampler, dataDir: dataDir}
+	manual := &help{hub: hc, defMachine: *defMachine, sampler: sampler, dataDir: dataDir}
 	mux.Handle("GET /{$}", manual)
 	mux.Handle("GET /help", manual)
 	mux.Handle("GET /help.md", manual)
@@ -181,7 +183,11 @@ func main() {
 		fatal("%v", err)
 	}
 	url := pageURL(ln.Addr())
-	log.Printf("deelook on %s (hub %s, poll every %s): open %s", *listen, *hubURL, *interval, url)
+	hubNote := "hub " + *hubURL
+	if *hubURL == "" {
+		hubNote = "no deemesh-hub: no HMI screens, sampling on machines added by address"
+	}
+	log.Printf("deelook on %s (%s, poll every %s): open %s", *listen, hubNote, *interval, url)
 	if doubleClicked {
 		log.Printf("closing this window stops deelook")
 	}

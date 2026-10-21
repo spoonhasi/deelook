@@ -8,12 +8,18 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 )
+
+// ErrNoHub is every call's error while no hub address is set: deelook runs
+// without deemesh (the HMI screens need it, sampling does not).
+var ErrNoHub = errors.New("deemesh-hub 주소가 없습니다 (deemesh 안 씀: 화면 오른쪽 위에서 넣을 수 있음)")
 
 // Envelope is one deemesh response: status 0 with a value, or a negative
 // status with an error text. Desc and Unit are passed through as the hub
@@ -40,17 +46,42 @@ type Machine struct {
 }
 
 type Client struct {
-	base string
+	mu   sync.Mutex
+	base string // "" while deelook runs without a hub
 	http *http.Client
 }
 
-// New returns a client for the hub at base (e.g. "http://127.0.0.1:8080").
-// requestTimeout bounds one HTTP round trip to the hub.
+// New returns a client for the hub at base (e.g. "http://127.0.0.1:8080";
+// "" for none). requestTimeout bounds one HTTP round trip to the hub.
 func New(base string, requestTimeout time.Duration) *Client {
 	return &Client{
 		base: strings.TrimRight(base, "/"),
 		http: &http.Client{Timeout: requestTimeout},
 	}
+}
+
+// Base is the hub's address, "" for none.
+func (c *Client) Base() string {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.base
+}
+
+// SetBase points the client at another hub ("" for none); calls already
+// under way finish with the old one.
+func (c *Client) SetBase(base string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.base = strings.TrimRight(base, "/")
+}
+
+// url is the hub's address plus path, or ErrNoHub.
+func (c *Client) url(path string) (string, error) {
+	base := c.Base()
+	if base == "" {
+		return "", ErrNoHub
+	}
+	return base + path, nil
 }
 
 // ReadBatch reads many addresses in one round trip (POST /read/batch).
@@ -65,7 +96,11 @@ func (c *Client) ReadBatch(ctx context.Context, commands []string, timeout time.
 	if err != nil {
 		return nil, err
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.base+"/read/batch", bytes.NewReader(body))
+	u, err := c.url("/read/batch")
+	if err != nil {
+		return nil, err
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, u, bytes.NewReader(body))
 	if err != nil {
 		return nil, err
 	}
@@ -87,7 +122,11 @@ func (c *Client) ReadBatch(ctx context.Context, commands []string, timeout time.
 
 // Read reads one address, e.g. "/machine/cncModel?machine=1".
 func (c *Client) Read(ctx context.Context, command string) (Envelope, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.base+command, nil)
+	u, err := c.url(command)
+	if err != nil {
+		return Envelope{}, err
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
 	if err != nil {
 		return Envelope{}, err
 	}

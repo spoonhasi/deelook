@@ -78,6 +78,7 @@ export interface MachineInfo {
 
 export interface HubState {
   ok: boolean
+  off?: boolean // no hub address: deelook runs without deemesh
   error?: string
   syncedAt?: string // when the hub's machine list was last received
 }

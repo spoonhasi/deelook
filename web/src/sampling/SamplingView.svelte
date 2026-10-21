@@ -481,6 +481,7 @@
       let src: Source = p.source === 'local' ? 'local' : 'hub'
       if (!(src === 'hub' ? hubMachines : localMachines).length && (src === 'hub' ? localMachines : hubMachines).length)
         src = src === 'hub' ? 'local' : 'hub'
+      if (hub.off && !hubMachines.length) src = 'local' // no deemesh: machines are added here
       await selectSource(src)
     } catch (e) {
       message = String((e as Error).message)
@@ -753,7 +754,7 @@
           <p class="hint">찾은 곳: {library.path}<br />{library.error}</p>
         </div>
       {/if}
-      {#if !hub.ok}
+      {#if !hub.ok && !hub.off}
         <p class="warn">
           ⚠ deemesh-hub에 연결할 수 없습니다. {hub.syncedAt ? `마지막으로 받은 기계 목록(${time(hub.syncedAt)})과` : ''} 여기서 직접 추가한
           기계로 수집합니다. 수집은 deelook이 CNC에 직접 연결하므로 허브 없이도 됩니다.
@@ -812,9 +813,12 @@
       {/if}
       {#if loaded && !shown.length}
         <p class="warn">
-          {#if source === 'hub'}
-            deemesh-hub에서 받은 FANUC(<code>nc_focas2_fanuc</code>) 기계가 없습니다. 허브에 없는 기계는 기계 옆 "추가"로 IP를 넣어
-            추가하세요.
+          {#if source === 'hub' && hub.off}
+            deemesh-hub를 쓰지 않습니다(주소 없음). "직접 추가"를 고르고 "추가"로 기계를 IP로 넣으세요. 허브 주소는 페이지 오른쪽
+            위에서 넣습니다.
+          {:else if source === 'hub'}
+            deemesh-hub에서 받은 FANUC(<code>nc_focas2_fanuc</code>) 기계가 없습니다. 허브에 없는 기계는 "직접 추가"를 고르고 "추가"로
+            IP를 넣으세요.
           {:else}
             직접 추가한 기계가 없습니다. 기계 옆 "추가"로 이름·IP·FOCAS2 포트를 넣어 추가하세요.
           {/if}

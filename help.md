@@ -60,7 +60,7 @@ _실행 중인 deelook의 `/help`에서는 여기에 허브 연결, FOCAS2 라�
 
 | 이름 | 기본값 | 뜻 |
 |---|---|---|
-| `hub` | `"http://127.0.0.1:8080"` | deemesh-hub 주소 |
+| `hub` | `"http://127.0.0.1:8080"` | deemesh-hub 주소. `""`이면 deemesh 없이(HMI 화면 없음, 시계열 수집은 직접 추가한 기계로). 페이지 오른쪽 위에서 바꾸거나 지우면 바로 적용되고 이 줄도 바뀜 |
 | `listen` | `":8090"` | 웹 서버 주소. `"127.0.0.1:8090"`이면 이 PC에서만 |
 | `machine` | `""` | `/hmi` 주소에 기계가 없을 때 보여 줄 기계: 번호(`1`), 이름(`"bench-31i"`), `""`(번호가 가장 작은 FANUC 기계) |
 | `interval`, `timeout` | `"1s"`, `"5s"` | HMI 화면을 허브에서 읽는 간격, 한 번 읽을 때 허브 쪽 제한 시간 |
@@ -97,6 +97,7 @@ _실행 중인 deelook의 `/help`에서는 여기에 허브 연결, FOCAS2 라�
 
 | 요청 | 내용 |
 |---|---|
+| `GET /api/hub`, `PUT /api/hub` | deemesh-hub 주소와 연결 상태 / 바꾸기 `{"url"}` (`""`: deemesh 안 씀; `deelook.toml`에도 씀) |
 | `GET /api/sampling/types` | 데이터 종류 표(서보, 주축, CNC 정보)와 PMC 주소 종류 |
 | `GET /api/sampling/machines` | 수집할 수 있는 기계와 축 이름, 허브 연결 상태, FOCAS2 라이브러리 |
 | `POST /api/sampling/machines` | 기계를 IP로 추가: `{"name", "host", "port"}` (CNC에 연결해 축 이름을 읽음) |

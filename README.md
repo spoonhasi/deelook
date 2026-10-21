@@ -265,7 +265,7 @@ bin/deelook-windows-amd64/deelook.exe -hub http://127.0.0.1:8080 -machine 2 -lam
 | 옵션 | 기본값 | 설명 |
 |---|---|---|
 | `-listen` | `:8090` | 웹 서버 주소 |
-| `-hub` | `http://127.0.0.1:8080` | deemesh-hub 주소 |
+| `-hub` | `http://127.0.0.1:8080` | deemesh-hub 주소. `""`이면 deemesh 없이(HMI 화면 없음, 시계열 수집은 직접 추가한 기계로). 페이지 오른쪽 위에서 바꾸거나 지우면 바로 적용되고 `deelook.toml`에도 써짐 |
 | `-machine` | (없음) | 주소에 machine이 없을 때 HMI 화면에 보여 줄 기계: machine_id 또는 이름. 없으면 허브 목록에서 번호가 가장 작은 FANUC 기계 |
 | `-interval` | `1s` | 한 화면을 읽는 간격 |
 | `-timeout` | `5s` | 한 번 읽을 때 허브 쪽 제한 시간 |
