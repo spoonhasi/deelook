@@ -28,6 +28,7 @@
   import LiveChart from './LiveChart.svelte'
   import SessionViewer from './SessionViewer.svelte'
   import Reference from './Reference.svelte'
+  import HelpButton from '../lib/HelpButton.svelte'
   import { explainError, PMC_KINDS } from './reference'
   import { trgText } from './trigger'
 
@@ -142,7 +143,9 @@
     }
   }
   /** Kinds to offer: the mode's, plus the channel's own if the mode lacks it. */
-  const kindsFor = (c: ChannelConfig) => (ext ? EXT_KINDS : BASIC_KINDS.includes(c.kind) ? BASIC_KINDS : [...BASIC_KINDS, c.kind])
+  // every kind in both modes (those of the extended mode off in basic), so
+  // the menu keeps its width and switching the mode moves nothing
+  const kindOff = (k: Kind) => !ext && !BASIC_KINDS.includes(k)
 
   /** Why a channel of kind cannot be added now ('' if it can). */
   function canAdd(kind: Kind): string {
@@ -283,8 +286,9 @@
         ['cnc_sdtsetchnl', `채널 ${n}개, datanum ${points}${points < 0 ? ' (종료할 때까지)' : ' 점'}`],
         ['cnc_sdtstartsmpl', `path ${f.path}, seqno ${f.waitBlock ? f.startSeq : 0}${f.waitBlock ? ' (그 블록이 실행되면 시작)' : ' (즉시)'}`],
         ['cnc_sdtreadsmpl', '반복 — stat -1 시작 대기 / 1 수집 중 / 0 끝'],
-        points > 0 ? ['cnc_sdtendsmpl', 'CNC가 다 모은 뒤 (stat 0)'] : ['cnc_sdtcancelsmpl', '수집 종료 버튼'],
-        ...(points > 0 ? [['cnc_sdtcancelsmpl', '그 전에 수집 종료 버튼을 누르면']] : []),
+        points > 0
+          ? ['cnc_sdtendsmpl', 'CNC가 다 모은 뒤 (stat 0), 그 전에 수집 종료 버튼을 누르면 cnc_sdtcancelsmpl']
+          : ['cnc_sdtcancelsmpl', '수집 종료 버튼'],
         ['cnc_freelibhndl', ''],
       ]
     const cond = (f.trgSeqOn ? 1 : 0) | (f.trgSigOn && f.trgUp ? 2 : 0) | (f.trgSigOn && f.trgDown ? 4 : 0)
@@ -662,20 +666,27 @@
             <input type="radio" bind:group={form.mode} value="extended" disabled={locked || !extOk} />확장 <small>cnc_sdt*2</small>
           </label>
         </div>
+        <HelpButton title="기본 방식과 확장 방식">
+          <table>
+            <thead><tr><th></th><th>기본 <code>cnc_sdt*</code></th><th>확장 <code>cnc_sdt*2</code></th></tr></thead>
+            <tbody>
+              <tr><th>모으는 것</th><td>서보·주축 데이터</td><td>서보·주축 데이터에 더해 <b>PMC 신호</b>(비트·바이트·워드)와 <b>CNC 정보</b>(O·N 번호)를 같은 시간축으로</td></tr>
+              <tr><th>시작</th><td>즉시, 또는 지정한 블록(N 번호)이 실행될 때</td><td>늘 즉시</td></tr>
+              <tr><th>책갈피</th><td>없음</td><td>블록이 실행되거나 PMC 신호가 바뀐 순간을 CNC가 표시 (수집은 멈추지 않음)</td></tr>
+              <tr><th>길이</th><td colspan="2">종료할 때까지, 또는 정한 점 수만큼</td></tr>
+              <tr><th>되는 곳</th><td>0i-D, 0i-F, 30i-A, 30i-B, Power Motion i-A · Windows, Linux</td><td>0i-F, 30i-B · Windows만 (Linux 32비트 라이브러리에는 이 함수가 없음)</td></tr>
+            </tbody>
+          </table>
+          <p>
+            0i-F·30i-B를 Windows에서 쓰고 블록 N에서 시작할 필요가 없으면, 확장 방식이 서보·주축 데이터를 똑같이 모으면서 PMC 신호,
+            O·N 번호, 책갈피까지 줍니다. 기본 방식은 확장 함수가 없는 기종·라이브러리, 블록 N 시작, 그리고 확장 방식의 함정(PMC
+            채널 순서, 실패 뒤 정리 등)이 필요 없는 단순한 수집에 씁니다.
+          </p>
+        </HelpButton>
       </div>
-      <p class="hint">
-        {#if ext}
-          서보·주축 데이터에 더해 <b>PMC 신호</b>와 <b>CNC 정보(O·N 번호)</b>를 같은 시간축으로 모읍니다. 늘 즉시 시작하고,
-          블록이 실행되거나 PMC 신호가 바뀐 순간에 CNC가 그 자리에 <b>책갈피</b>(FANUC 이름: 트리거)를 남겨 줍니다.
-          종료할 때까지 또는 정한 점 수만큼 모읍니다.
-        {:else}
-          서보·주축 데이터를 모읍니다. 종료할 때까지 또는 정한 점 수만큼, 즉시 또는 지정한 블록(N 번호)이 실행될 때부터
-          시작할 수 있습니다.
-        {/if}
-        {#if library?.available && !extOk}
-          <br />확장 방식: 이 라이브러리({library.version})에는 cnc_sdt*2 함수가 없습니다 (리눅스 32비트 J555 라이브러리가 그렇습니다).
-        {/if}
-      </p>
+      {#if library?.available && !extOk}
+        <p class="hint">확장 방식: 이 라이브러리({library.version})에는 cnc_sdt*2 함수가 없습니다 (리눅스 32비트 J555 라이브러리가 그렇습니다).</p>
+      {/if}
 
       <label class="row">
         <span>서보 주기</span>
@@ -714,36 +725,56 @@
             <span class="hint">이 시퀀스 번호가 실행되면 CNC가 수집을 시작</span>
           {/if}
         {:else}
-          <!-- cnc_sdtstartsmpl2 has no start block: it starts at once -->
-          <label class="opt"><input type="radio" checked disabled />즉시</label>
-          <span class="hint">확장 방식은 늘 즉시 시작합니다 (블록 N에서 시작은 기본 방식만)</span>
+          <!-- cnc_sdtstartsmpl2 has no start block: it starts at once; the
+               same two choices as in basic, so the row keeps its size -->
+          <label class="opt"><input type="radio" name="start-ext" checked disabled />즉시</label>
+          <label class="opt" title="블록 N에서 시작은 기본 방식에서만"><input type="radio" name="start-ext" disabled />블록 N</label>
+          <span class="hint">기본 방식에서만</span>
         {/if}
       </div>
-      {#if ext}
-        <div class="row">
-          <span>책갈피</span>
-          <label class="opt"><input type="checkbox" bind:checked={form.trgSeqOn} disabled={locked} />블록 N</label>
-          {#if form.trgSeqOn}<input type="number" class="wide" min="1" bind:value={form.trgSeq} disabled={locked} />{/if}
-        </div>
-        <div class="row">
-          <span></span>
-          <label class="opt"><input type="checkbox" bind:checked={form.trgSigOn} disabled={locked} />PMC 신호</label>
-          {#if form.trgSigOn}
-            <input type="text" class="addr" bind:value={form.trgSignal} placeholder="R9091.6" disabled={locked} aria-label="책갈피 PMC 주소" />
-            <select bind:value={form.trgUnit} disabled={locked} aria-label="책갈피 PMC 경로">
-              {#each PMC_UNITS as u (u)}<option value={u}>PMC{u}</option>{/each}
-            </select>
-            <label class="opt"><input type="checkbox" bind:checked={form.trgUp} disabled={locked} />상승 (0→1)</label>
-            <label class="opt"><input type="checkbox" bind:checked={form.trgDown} disabled={locked} />하강 (1→0)</label>
-          {/if}
-        </div>
-        <p class="hint">
-          책갈피(FANUC 이름: 트리거)는 수집을 시작·종료시키지 않습니다. 수집은 그대로 이어지고, 조건이 맞는 순간 CNC가 그
-          자리에 책갈피를 남깁니다(차트의 점선, CSV의 trigger 열). 시작할 때 이미 1인 신호에는 남지 않고, 그 뒤 실제로 바뀐 순간에만 남습니다.
-          <br />시험해 보기: <button type="button" class="link" onclick={bookmarkExample} disabled={locked}>R9091.6</button> — PMC가
-          0.5초마다 저절로 0과 1을 바꾸는 시스템 릴레이라, 기계를 건드리지 않아도 책갈피가 0.5초마다 남습니다.
-        </p>
-      {/if}
+      <!-- in both modes (off in basic), so switching the mode does not move the page -->
+      <div class="row">
+        <span>책갈피</span>
+        <label class="opt"><input type="checkbox" bind:checked={form.trgSeqOn} disabled={locked || !ext} />블록 N</label>
+        {#if form.trgSeqOn}<input type="number" class="wide" min="1" bind:value={form.trgSeq} disabled={locked || !ext} />{/if}
+        {#if !ext}<span class="hint">확장 방식에서만</span>{/if}
+        <HelpButton title="책갈피 (FANUC 이름: 트리거)">
+          <p>
+            책갈피는 수집을 <b>시작하거나 멈추지 않습니다.</b> 수집은 "수집 시작"부터 "수집 종료"(또는 정한 점 수)까지 그대로
+            이어지고, 조건이 맞는 순간 CNC가 그 자리에 표시를 남깁니다. 차트에는 점선, CSV에는 <code>trigger</code> 열로 나옵니다.
+            긴 수집에서 보고 싶은 순간을 바로 찾는 데 씁니다.
+          </p>
+          <ul>
+            <li><b>블록 N</b>: 고른 계통에서 그 시퀀스 번호의 블록이 실행되는 순간.</li>
+            <li><b>PMC 신호</b>: 그 비트가 0→1(상승)이나 1→0(하강)으로 바뀌는 순간. 둘 다 고르면 바뀔 때마다. 1로 머물러 있는
+              동안에는 남지 않고, 시작할 때 이미 1인 신호에도 남지 않습니다(31i 벤치·NC Guide에서 확인).</li>
+            <li>T(타이머)·C(카운터)·Z 주소는 쓸 수 없습니다.</li>
+          </ul>
+          <p>
+            CNC가 찍는 이유: deelook은 네트워크 너머에서 데이터를 묶어서 받아 오므로 신호가 바뀐 정확한 샘플을 알 수 없습니다.
+            CNC는 그 순간을 1 ms 단위로 같은 시간축에 찍어 줍니다.
+          </p>
+          <p>
+            시험해 보기: <b>R9091.6</b>은 PMC가 0.5초마다 저절로 0과 1을 바꾸는 시스템 릴레이라, 기계를 건드리지 않아도 책갈피가
+            0.5초마다 남습니다. PMC 신호 줄의 "예: R9091.6"을 누르면 채워집니다.
+          </p>
+          <p>기본 방식에는 책갈피가 없고, 대신 블록 N에서 수집을 시작할 수 있습니다.</p>
+        </HelpButton>
+      </div>
+      <div class="row">
+        <span></span>
+        <label class="opt"><input type="checkbox" bind:checked={form.trgSigOn} disabled={locked || !ext} />PMC 신호</label>
+        {#if form.trgSigOn}
+          <input type="text" class="addr" bind:value={form.trgSignal} placeholder="R9091.6" disabled={locked || !ext} aria-label="책갈피 PMC 주소" />
+          <select bind:value={form.trgUnit} disabled={locked || !ext} aria-label="책갈피 PMC 경로">
+            {#each PMC_UNITS as u (u)}<option value={u}>PMC{u}</option>{/each}
+          </select>
+          <label class="opt"><input type="checkbox" bind:checked={form.trgUp} disabled={locked || !ext} />상승 (0→1)</label>
+          <label class="opt"><input type="checkbox" bind:checked={form.trgDown} disabled={locked || !ext} />하강 (1→0)</label>
+        {/if}
+        <button type="button" class="link" onclick={bookmarkExample} disabled={locked || !ext}
+          title="PMC가 0.5초마다 저절로 바꾸는 신호: 기계를 건드리지 않고 책갈피 시험">예: R9091.6</button>
+      </div>
 
       <ol class="channels">
         {#each form.channels as c, i (i)}
@@ -752,8 +783,8 @@
             <div class="ch">
               <span class="no">{i + 1}</span>
               <select value={c.kind} onchange={(e) => setKind(c, e.currentTarget.value as Kind)} disabled={locked} aria-label="채널 {i + 1} 종류">
-                {#each kindsFor(c) as k (k)}
-                  <option value={k}>{KIND[k]}</option>
+                {#each EXT_KINDS as k (k)}
+                  <option value={k} disabled={kindOff(k) && k !== c.kind}>{KIND[k]}</option>
                 {/each}
               </select>
               {#if c.kind === 'servo' || c.kind === 'spindle'}
@@ -807,16 +838,25 @@
       </ol>
       <div class="row add">
         <button class="ghost" disabled={locked || form.channels.length >= MAX_CHANNELS} onclick={() => form.channels.push(newChannel())}>+ 채널 추가</button>
-        {#if ext}
-          <button class="ghost" disabled={locked || form.channels.length >= MAX_CHANNELS || form.channels.some((c) => c.kind === 'pmcbit')}
-            onclick={() => form.channels.push(newChannel('pmcbit'))}>+ PMC 비트</button>
-          <button class="ghost" disabled={locked || form.channels.length >= MAX_CHANNELS} onclick={() => form.channels.push(newChannel('cnc'))}>+ N 번호</button>
-        {/if}
+        <!-- in both modes (off in basic), like the bookmarks -->
+        <button class="ghost" disabled={!ext || locked || form.channels.length >= MAX_CHANNELS || form.channels.some((c) => c.kind === 'pmcbit')}
+          title={ext ? '' : '확장 방식에서만'} onclick={() => form.channels.push(newChannel('pmcbit'))}>+ PMC 비트</button>
+        <button class="ghost" disabled={!ext || locked || form.channels.length >= MAX_CHANNELS}
+          title={ext ? '' : '확장 방식에서만'} onclick={() => form.channels.push(newChannel('cnc'))}>+ N 번호</button>
+        <HelpButton title="채널">
+          <ul>
+            <li>최대 8채널. 서보는 DSP(2축)당 4채널 정도, 주축은 앰프당 2채널까지입니다. 넘으면 CNC가 <code>EW_DATA</code>로
+              거부합니다(31i 벤치에서 X1 7채널 + Z1 1채널이 거부됨).</li>
+            <li>값은 CNC가 주는 16비트 원시값이고, 단위는 데이터마다 다릅니다(채널 아래 "단위"). 값이 16비트를 넘는 데이터는 시프트로
+              2<sup>n</sup>으로 나눠 받습니다.</li>
+            <li>데이터 종류는 서보 0~46번, 주축 0~21번입니다. 31i 벤치·NC Guide는 모든 종류를 받았고, 그 기계에 없는 장치의
+              종류는 거부되지 않고 0으로 옵니다. 되는지는 값이 의미 있게 나오는지로 봅니다.</li>
+            <li>확장 방식에서는 PMC 비트(16개까지 한 채널, 하나만), PMC 바이트·워드, CNC 정보(O·N 번호) 채널도 됩니다. PMC 비트
+              채널은 deelook이 CNC에 맨 마지막 채널로 보냅니다(앞에 두면 뒤 채널 데이터가 밀려 섞임).</li>
+            <li>CNC 정보(O·N 번호)는 4 ms마다 갱신되고, 수집을 시작하면 다음 블록이 시작될 때까지 0입니다.</li>
+          </ul>
+        </HelpButton>
       </div>
-      <p class="hint">
-        최대 8채널. 서보는 DSP(2축)당 4채널, 주축은 앰프당 2채널까지입니다. 값은 CNC가 주는 16비트 원시값이고 단위는 데이터마다
-        다릅니다. 데이터 종류는 서보 0~46번, 주축 0~21번이며 일부는 서보 소프트웨어 버전이나 옵션이 있어야 나옵니다.
-      </p>
 
       {#if problems.length}
         <ul class="problems">
@@ -1329,8 +1369,12 @@
     margin: 6px 0;
     padding-left: 22px;
   }
+  details.calls ol {
+    overflow-x: auto; /* one line per call: its height stays when the mode changes */
+  }
   details.calls li {
     margin: 2px 0;
+    white-space: nowrap;
   }
   td.links {
     white-space: nowrap;
