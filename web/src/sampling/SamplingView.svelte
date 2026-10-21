@@ -242,13 +242,13 @@
     if (bitCh && kinds.some((k) => k === 'pmcbyte' || k === 'pmcword') && (bitCh.signals ?? []).length > 8)
       p.push('PMC 바이트·워드 채널이 있으면 비트 채널의 신호는 8개까지입니다.')
     if (ext && f.trgSigOn && PMC_KINDS.some((k) => !k.trigger && f.trgSignal.trim().toUpperCase().startsWith(k.letter)))
-      p.push('T(타이머)·C(카운터)·Z 주소는 트리거로 쓸 수 없습니다.')
+      p.push('T(타이머)·C(카운터)·Z 주소는 책갈피 신호로 쓸 수 없습니다.')
     if (ext && f.trgSigOn) {
-      if (!BIT.test(f.trgSignal.trim().toUpperCase())) p.push('트리거 신호는 Y0.4 같은 PMC 비트 주소여야 합니다.')
-      if (!f.trgUp && !f.trgDown) p.push('트리거 신호의 상승·하강 중 하나 이상을 고르세요.')
+      if (!BIT.test(f.trgSignal.trim().toUpperCase())) p.push('책갈피 신호는 Y0.4 같은 PMC 비트 주소여야 합니다.')
+      if (!f.trgUp && !f.trgDown) p.push('책갈피를 남길 변화(0→1, 1→0)를 하나 이상 고르세요.')
     }
     if (!ext && f.waitBlock && !(f.startSeq > 0)) p.push('시작 블록 번호를 넣으세요.')
-    if (ext && f.trgSeqOn && !(f.trgSeq > 0)) p.push('트리거 블록 번호를 넣으세요.')
+    if (ext && f.trgSeqOn && !(f.trgSeq > 0)) p.push('책갈피 블록 번호를 넣으세요.')
     return p
   })
 
@@ -281,7 +281,7 @@
       [
         'cnc_sdtstartsmpl2',
         `path ${f.path}, condition 0x${cond.toString(16).padStart(4, '0')}` +
-          (cond ? `, TRG_DATA {seq_no ${f.trgSeqOn ? f.trgSeq : 0}, pmc_trg ${f.trgSigOn ? f.trgSignal : '-'}}` : ' (트리거 없음)'),
+          (cond ? `, TRG_DATA {seq_no ${f.trgSeqOn ? f.trgSeq : 0}, pmc_trg ${f.trgSigOn ? f.trgSignal : '-'}}` : ' (책갈피 없음)'),
       ],
       ['cnc_sdtreadsmpl2', '반복 — trg 비트: SEQ / P_UP / P_DW 표시, STSM = 다 모음'],
       [
@@ -548,8 +548,8 @@
     const parts = [c.mode === 'extended' ? '확장' : '기본', `${c.servoPeriodUs / 1000} ms`]
     parts.push(c.points ? `${fmt(c.points)}점` : '종료까지')
     if (c.startSeq) parts.push(`N${c.startSeq}부터`)
-    if (c.trigger?.seq) parts.push(`트리거 N${c.trigger.seq}`)
-    if (c.trigger?.signal) parts.push(`트리거 ${c.trigger.signal}${c.trigger.up ? '↑' : ''}${c.trigger.down ? '↓' : ''}`)
+    if (c.trigger?.seq) parts.push(`책갈피 N${c.trigger.seq}`)
+    if (c.trigger?.signal) parts.push(`책갈피 ${c.trigger.signal}${c.trigger.up ? '↑' : ''}${c.trigger.down ? '↓' : ''}`)
     return parts.join(' · ')
   }
   const progress = $derived(
@@ -647,8 +647,9 @@
       </div>
       <p class="hint">
         {#if ext}
-          서보·주축 데이터에 더해 <b>PMC 신호</b>와 <b>CNC 정보(O·N 번호)</b>를 같은 시간축으로 모으고, 블록 실행이나 PMC
-          신호 변화를 CNC가 <b>트리거</b>로 표시해 줍니다. 종료할 때까지 또는 정한 점 수만큼 모읍니다.
+          서보·주축 데이터에 더해 <b>PMC 신호</b>와 <b>CNC 정보(O·N 번호)</b>를 같은 시간축으로 모읍니다. 늘 즉시 시작하고,
+          블록이 실행되거나 PMC 신호가 바뀐 순간에 CNC가 그 자리에 <b>책갈피</b>(FANUC 이름: 트리거)를 남겨 줍니다.
+          종료할 때까지 또는 정한 점 수만큼 모읍니다.
         {:else}
           서보·주축 데이터를 모읍니다. 종료할 때까지 또는 정한 점 수만큼, 즉시 또는 지정한 블록(N 번호)이 실행될 때부터
           시작할 수 있습니다.
@@ -682,7 +683,7 @@
         <select bind:value={form.path} disabled={locked}>
           {#each Array.from({ length: pathCount }, (_, i) => i + 1) as p (p)}<option value={p}>path {p}</option>{/each}
         </select>
-        <span class="hint">{ext ? '트리거 블록 번호를 볼 계통' : '시작 블록 번호를 볼 계통'}</span>
+        <span class="hint">{ext ? '책갈피 블록 번호를 볼 계통' : '시작 블록 번호를 볼 계통'}</span>
       </label>
 
       <div class="row">
@@ -702,7 +703,7 @@
       </div>
       {#if ext}
         <div class="row">
-          <span>트리거</span>
+          <span>책갈피</span>
           <label class="opt"><input type="checkbox" bind:checked={form.trgSeqOn} disabled={locked} />블록 N</label>
           {#if form.trgSeqOn}<input type="number" class="wide" min="1" bind:value={form.trgSeq} disabled={locked} />{/if}
         </div>
@@ -710,8 +711,8 @@
           <span></span>
           <label class="opt"><input type="checkbox" bind:checked={form.trgSigOn} disabled={locked} />PMC 신호</label>
           {#if form.trgSigOn}
-            <input type="text" class="addr" bind:value={form.trgSignal} placeholder="Y0.4" disabled={locked} aria-label="트리거 PMC 주소" />
-            <select bind:value={form.trgUnit} disabled={locked} aria-label="트리거 PMC 경로">
+            <input type="text" class="addr" bind:value={form.trgSignal} placeholder="Y0.4" disabled={locked} aria-label="책갈피 PMC 주소" />
+            <select bind:value={form.trgUnit} disabled={locked} aria-label="책갈피 PMC 경로">
               {#each PMC_UNITS as u (u)}<option value={u}>PMC{u}</option>{/each}
             </select>
             <label class="opt"><input type="checkbox" bind:checked={form.trgUp} disabled={locked} />상승 (0→1)</label>
@@ -719,8 +720,8 @@
           {/if}
         </div>
         <p class="hint">
-          트리거는 수집을 시작·종료시키지 않고, 그 순간을 CNC가 표시합니다(차트의 점선, CSV의 trigger 열). 표시된 읽기는 그
-          순간에서 끊겨 돌아옵니다. 신호가 처음부터 1이면 시작 직후 상승으로 표시될 수 있습니다.
+          책갈피(FANUC 이름: 트리거)는 수집을 시작·종료시키지 않습니다. 수집은 그대로 이어지고, 조건이 맞는 순간 CNC가 그
+          자리에 책갈피를 남깁니다(차트의 점선, CSV의 trigger 열). 신호가 처음부터 1이면 시작 직후 0→1로 한 번 남을 수 있습니다.
         </p>
       {/if}
 
@@ -900,7 +901,7 @@
       {/if}
 
       {#if status?.events?.length}
-        <h3>트리거 표시 <small>cnc_sdtreadsmpl2 trg</small></h3>
+        <h3>책갈피 <small>cnc_sdtreadsmpl2 trg</small></h3>
         <div class="scroll short">
           <table>
             <thead><tr><th>시점 (첫 샘플부터)</th><th>받은 시각</th><th>비트</th></tr></thead>
@@ -956,7 +957,7 @@
       <div class="scroll">
         <table class="sessions">
           <thead>
-            <tr><th>#</th><th>시작</th><th>길이</th><th>방식</th><th>채널</th><th>샘플/채널</th><th>트리거</th><th>크기</th><th>상태</th><th></th></tr>
+            <tr><th>#</th><th>시작</th><th>길이</th><th>방식</th><th>채널</th><th>샘플/채널</th><th>책갈피</th><th>크기</th><th>상태</th><th></th></tr>
           </thead>
           <tbody>
             {#each sessions as s (s.id)}

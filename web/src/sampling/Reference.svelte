@@ -104,18 +104,18 @@
             <li>type과 시프트는 무시됩니다. 주소는 PMC_DATA {'{'}unittype, adr, bit, no{'}'}로 줍니다 (바이트·워드는 bit 0).</li>
             <li>unittype이 0인 칸부터 뒤는 무시됩니다.</li>
           </ul>
-          <h3>트리거 (cnc_sdtstartsmpl2)</h3>
+          <h3>트리거 = 책갈피 (cnc_sdtstartsmpl2)</h3>
           <ul>
-            <li>condition 비트: SEQ = 블록 N 실행, P_UP = 신호 상승, P_DW = 신호 하강. 변화 전부를 보려면 P_UP과 P_DW 둘 다.</li>
+            <li>condition 비트: SEQ = 블록 N 실행, P_UP = 신호 0→1 (상승), P_DW = 신호 1→0 (하강). 변화 전부를 보려면 P_UP과 P_DW 둘 다.</li>
             <li>TRG_DATA {'{'}seq_no, pmc_trg{'}'}: 블록 번호와 PMC 비트 하나. 블록 번호는 path로 정한 계통에서 봅니다.</li>
-            <li>트리거는 샘플링을 시작·종료하지 않습니다. cnc_sdtreadsmpl2의 trg에 표시되고, 그 읽기의 마지막 점이 그 순간입니다.</li>
-            <li>T(타이머)·C(카운터) 주소는 트리거로 쓸 수 없습니다 (Z도 목록에 없음).</li>
+            <li>트리거는 샘플링을 시작·종료하지 않고 그 순간에 표시만 남깁니다(그래서 deelook 화면에서는 책갈피라고 부릅니다). cnc_sdtreadsmpl2의 trg에 표시되고, 그 읽기의 마지막 점이 그 순간입니다.</li>
+            <li>T(타이머)·C(카운터) 주소는 책갈피(트리거) 신호로 쓸 수 없습니다 (Z도 목록에 없음).</li>
           </ul>
         </div>
         <div>
           <h3>주소 종류 (adr)</h3>
           <table>
-            <thead><tr><th>adr</th><th>주소</th><th>뜻</th><th>트리거</th></tr></thead>
+            <thead><tr><th>adr</th><th>주소</th><th>뜻</th><th>책갈피</th></tr></thead>
             <tbody>
               {#each PMC_KINDS as k, i (k.letter)}
                 <tr><td class="num">{i}</td><td><code>{k.letter}</code></td><td>{k.meaning}{#if k.note} <span class="hint">({k.note})</span>{/if}</td><td>{k.trigger ? '가능' : '불가'}</td></tr>
@@ -203,7 +203,7 @@
           꾸준히 1인 신호가 SEQ로 읽힙니다 (30i-B·NC Guide, Fwlib64 6.9·7.3). deelook은 자동으로 마지막에 보냅니다.</li>
         <li>trg 비트 위치: SEQ 0x0001, P_UP 0x0002, P_DW 0x0004, STSM 0x8000. 끝난 뒤의 읽기는 0x8080.</li>
         <li>신호가 처음부터 1이면 시작 직후 P_UP이 찍히기도 했습니다.</li>
-        <li>블록 트리거는 N 번호 채널이 바뀌기 몇 ms 전에 찍힙니다 (N 번호는 4 ms마다 갱신).</li>
+        <li>블록 N 책갈피(트리거)는 N 번호 채널이 바뀌기 몇 ms 전에 찍힙니다 (N 번호는 4 ms마다 갱신).</li>
         <li>점 수를 정한 확장 수집이 끝나면 PMC·CNC 정보 채널의 마지막 몇 점(4~8점)이 0으로 옵니다.</li>
         <li>cnc_sdtreadsmpl2 오류 뒤 cnc_sdtendsmpl2를 안 부르면 CNC 샘플러가 멈춰 NC Guide가 새 연결까지 거부했습니다.</li>
         <li>한 번 읽기에 오는 양은 모든 채널 합쳐 약 650~690워드(1.3 KB). 인터넷 너머 31i 벤치: 1 ms 3채널은 따라가고,

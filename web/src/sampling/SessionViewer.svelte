@@ -74,7 +74,7 @@
       {/each}
     </div>
     {#if view.events.length}
-      <h3>트리거 표시 <small>이 구간</small></h3>
+      <h3>책갈피 <small>이 구간</small></h3>
       <ul class="events">
         {#each view.events as e (e.timeUs + ':' + e.bits)}
           <li>

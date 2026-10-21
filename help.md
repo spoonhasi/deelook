@@ -43,7 +43,8 @@ _실행 중인 deelook의 `/help`에서는 여기에 허브 연결, FOCAS2 라�
   Linux는 32비트 `libfwlib32.so`를 실행 파일 옆에 두거나 설정 `fwlib`로 지정합니다. 없으면 HMI 화면만 됩니다.
 - **방식**
   - 기본(`cnc_sdtsetchnl`…): 서보 데이터 0~46번·주축 0~21번, 종료할 때까지 또는 정한 점 수, 즉시 또는 블록 N이 실행될 때부터.
-  - 확장(`cnc_sdtsetchnl2`…, Windows만): 위에 더해 PMC 신호, O·N 번호, 트리거(블록 N, PMC 신호 상승·하강) 표시.
+  - 확장(`cnc_sdtsetchnl2`…, Windows만): 위에 더해 PMC 신호, O·N 번호. 늘 즉시 시작하고, 블록 N이 실행되거나 PMC 신호가
+    바뀐(0→1, 1→0) 순간에 CNC가 **책갈피**(FANUC 이름: 트리거)를 남깁니다. 책갈피는 수집을 시작·종료시키지 않습니다.
   - 현재값(`cnc_sdtread1shot`): 수집 없이 지금 값을 한 번 또는 1초마다.
 - **쓰는 순서**: 기계 → 방식·주기·길이 → 채널(종류, 축, 데이터) → 수집 시작 → 수집 종료. 수집 중에는 최근 3초 차트와 읽기
   통계가 나오고, 끝난 세션은 목록에서 **보기**(전체 차트), **CSV**, **DB**(세션 파일 그대로 받기), **삭제**를 합니다.
@@ -75,7 +76,7 @@ _실행 중인 deelook의 `/help`에서는 여기에 허브 연결, FOCAS2 라�
 | `sessions\` | 수집 한 건마다 파일 하나, `20261014-234235_bench-31i_s9.db` (현지 시각, 기계 이름, 세션 번호). 넘겨줄 것 |
 | `deelook.db` | deelook 내부용: 세션 목록, 세션 번호, 기계 목록과 IP. 넘겨주지 않음. 지워도 세션 파일로 목록이 다시 만들어짐 |
 
-세션 파일 안: `session`(설정과 결과 한 줄), `chunks`(채널별 샘플 묶음: 16비트 원시값, little endian), `events`(트리거).
+세션 파일 안: `session`(설정과 결과 한 줄), `chunks`(채널별 샘플 묶음: 16비트 원시값, little endian), `events`(책갈피 = 트리거).
 샘플 i는 첫 샘플부터 i×주기 뒤의 값입니다. 파일 안의 시각은 UTC입니다.
 
 ## HTTP API
@@ -100,7 +101,7 @@ _실행 중인 deelook의 `/help`에서는 여기에 허브 연결, FOCAS2 라�
 | `POST /api/sampling/machines` | 기계를 IP로 추가: `{"name", "host", "port"}` (CNC에 연결해 축 이름을 읽음) |
 | `DELETE /api/sampling/machines/{machine}` | 직접 추가한 기계 지우기 |
 | `POST /api/sampling/machines/{machine}/names` | 축 이름을 CNC에서 다시 읽기 |
-| `GET /api/sampling/status` | 수집한 적이 있는 기계의 상태(읽기 통계, 트리거, FOCAS2 호출 기록) |
+| `GET /api/sampling/status` | 수집한 적이 있는 기계의 상태(읽기 통계, 책갈피, FOCAS2 호출 기록) |
 | `POST /api/sampling/{machine}/start` | 수집 시작. 본문은 아래 설정 |
 | `POST /api/sampling/{machine}/stop` | 수집 종료 |
 | `POST /api/sampling/{machine}/oneshot` | 현재값: `{"servoPeriodUs", "channels"}` |

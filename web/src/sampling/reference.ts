@@ -55,7 +55,7 @@ const EXPLAIN: Explain[] = [
   { code: 'EW_REJECT', fns: ['cnc_sdtsetchnl', 'cnc_sdtsetchnl2'], text: '이미 샘플링 중 (다른 프로그램 포함) — cnc_sdtcancelsmpl 또는 cnc_sdtendsmpl 뒤에 다시. Servo Guide를 쓰는 중이어도 거부됨' },
   { code: 'EW_REJECT', text: 'CNC가 실행을 거부함. Servo Guide(Mate)를 쓰는 중이면 cnc_sdt* 전체가 거부됨' },
   { code: 'EW_DATA', fns: ['cnc_sdtstartsmpl'], text: '채널 설정이 안 되었거나 틀림' },
-  { code: 'EW_DATA', fns: ['cnc_sdtstartsmpl2'], text: '트리거 조건(condition)이 틀림' },
+  { code: 'EW_DATA', fns: ['cnc_sdtstartsmpl2'], text: '책갈피(트리거) 조건(condition)이 틀림' },
   { code: 'EW_DATA', detail: 3, text: '총 점 수(datanum)가 8 미만' },
   { code: 'EW_DATA', detail: 4, text: '지정한 채널의 서보 모터·주축·PMC 신호를 쓸 수 없음 (축이 없거나, DSP당 서보 4채널·앰프당 주축 2채널 초과 등)' },
   { code: 'EW_DATA', detail: 20, text: '데이터 종류(type)가 틀림 — 이 서보·주축 소프트웨어에 없는 종류일 수 있음' },
