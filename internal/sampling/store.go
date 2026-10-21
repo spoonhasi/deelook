@@ -50,6 +50,9 @@ type Store struct {
 	next    int64             // the next session number
 	ignored map[string]string // files left out of the list (and said so), by name: their modification time
 
+	dirTime    time.Time // the sessions folder's modification time at the last reconcile
+	reconciled time.Time // when that was
+
 	oldMachines []machine // the machine list found in an older single database
 	oldSynced   time.Time
 }
@@ -205,6 +208,26 @@ func (s *Store) noteID(id int64) {
 // files new or changed since last read are (re)read, entries whose file is
 // gone are dropped, and sessions a dead process left running are marked
 // interrupted. s.mu is held (or s not shared yet).
+// freshen reconciles unless nothing can have changed: the sessions folder
+// has the modification time it had at the last pass, and that pass was less
+// than 5 s ago (adding or removing a file changes the folder's time; a
+// file changed in place does not, which the 5 s catch). A page asks for
+// several listings in a row; with thousands of files this keeps them quick.
+// s.mu is held.
+func (s *Store) freshen() error {
+	fi, err := os.Stat(s.dir)
+	if err == nil && fi.ModTime().Equal(s.dirTime) && time.Since(s.reconciled) < 5*time.Second {
+		return nil
+	}
+	if err := s.reconcile(); err != nil {
+		return err
+	}
+	if fi != nil {
+		s.dirTime, s.reconciled = fi.ModTime(), time.Now()
+	}
+	return nil
+}
+
 func (s *Store) reconcile() error {
 	entries, err := os.ReadDir(s.dir)
 	if err != nil {
@@ -623,26 +646,7 @@ func (s *Store) scanListed(row interface{ Scan(...any) error }) (SessionInfo, er
 
 // Sessions lists the newest sessions first, of one machine or ("") all.
 func (s *Store) Sessions(machine string, limit int) ([]SessionInfo, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if err := s.reconcile(); err != nil {
-		return nil, err
-	}
-	rows, err := s.index.Query(`SELECT `+listColumns+` FROM sessions WHERE ? = '' OR machine_id = ?
-		ORDER BY id DESC LIMIT ?`, machine, machine, limit)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	out := []SessionInfo{}
-	for rows.Next() {
-		si, err := s.scanListed(rows)
-		if err != nil {
-			return nil, err
-		}
-		out = append(out, si)
-	}
-	return out, rows.Err()
+	return s.SessionsWhere(SessionFilter{Machine: machine, Limit: limit})
 }
 
 func (s *Store) Session(id int64) (SessionInfo, error) {

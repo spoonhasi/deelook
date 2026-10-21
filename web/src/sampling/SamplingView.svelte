@@ -27,10 +27,12 @@
   } from './api'
   import BitChart from './BitChart.svelte'
   import LiveChart from './LiveChart.svelte'
+  import SessionList from './SessionList.svelte'
   import SessionViewer from './SessionViewer.svelte'
   import Reference from './Reference.svelte'
   import HelpButton from '../lib/HelpButton.svelte'
   import Modal from '../lib/Modal.svelte'
+  import { bytes, clock, duration, fmt, how, seconds, size, STATE, time } from './format'
   import { explainError, PMC_KINDS } from './reference'
   import { trgText } from './trigger'
 
@@ -54,7 +56,7 @@
   let library = $state<Library | null>(null)
   let machineId = $state('')
   let statuses = $state<Status[]>([])
-  let sessions = $state<SessionInfo[]>([])
+  let listVersion = $state(0) // the session list reads again when this changes
   let live = $state<Live>({ channels: [], events: [] })
   let busy = $state(false)
   let message = $state('')
@@ -152,7 +154,6 @@
       formFor = ''
       machineId = ''
       viewing = null
-      sessions = []
       live = { channels: [], events: [] }
       shot = null
       savePick()
@@ -408,29 +409,23 @@
     ]
   })
 
+  /** The session list and the disk line, read again (a session started, ended or went). */
   async function loadSessions() {
-    if (!machineId) return
-    try {
-      ;[sessions, storage] = await Promise.all([api.sessions(machineId), api.storage().catch(() => storage)])
-    } catch (e) {
-      message = String((e as Error).message)
-    }
+    listVersion++
+    storage = await api.storage().catch(() => storage)
+  }
+  /** Sessions deleted from the list (null: some, by age): the one drawn may be gone. */
+  function sessionsGone(ids: number[] | null) {
+    void loadSessions()
+    const v = viewing
+    if (!v) return
+    if (ids === null) void api.session(v.id).catch(() => viewing?.id === v.id && (viewing = null))
+    else if (ids.includes(v.id)) viewing = null
   }
 
   // the data folder's disk, refreshed with the session list
   let storage = $state<Storage | null>(null)
   const lowDisk = $derived(!!storage && storage.minFree > 0 && storage.free > 0 && storage.free < storage.minFree)
-
-  async function deleteSession(s: SessionInfo) {
-    if (!confirm(`세션 #${s.id} (${s.file}, ${size(s.size)})을 지울까요? 파일이 지워지고 되돌릴 수 없습니다.`)) return
-    try {
-      await api.deleteSession(s.id)
-      if (viewing?.id === s.id) viewing = null
-      await loadSessions()
-    } catch (e) {
-      message = String((e as Error).message)
-    }
-  }
 
   async function loadLive() {
     try {
@@ -453,11 +448,13 @@
     viewing = null
     live = { channels: [], events: [] }
     shot = null
-    await loadSessions()
+    void loadSessions()
     const saved = await api.ui<Partial<Form>>(formKey(id)).catch(() => null)
+    // no setup kept yet: the one of its newest session
+    const recent = saved ? [] : await api.sessionList({ machine: id, limit: 20 }).catch(() => [])
     if (machineId !== id) return // another machine was picked meanwhile
     if (saved) fromSaved(saved)
-    else fromConfig(sessions.find((s) => s.config?.channels?.length)?.config)
+    else fromConfig(recent.find((s) => s.config?.channels?.length)?.config)
     formFor = id
     if (statuses.find((s) => s.machine === id)?.session) void loadLive()
   }
@@ -597,9 +594,8 @@
       void loadLive()
       // a fixed-length capture the CNC finished: show all of it
       const id = status?.session
-      void loadSessions().then(() => {
-        if (st === 'completed') viewing = sessions.find((s) => s.id === id) ?? viewing
-      })
+      void loadSessions()
+      if (st === 'completed' && id) void api.session(id).then((s) => (viewing = s), () => {})
     }
     lastState = st
   })
@@ -669,56 +665,6 @@
     }
   })
 
-  const STATE: Record<string, string> = {
-    idle: '대기',
-    starting: '시작하는 중',
-    waiting: '시작 블록 대기',
-    running: '수집 중',
-    stopping: '종료하는 중',
-    stopped: '종료됨',
-    completed: '완료 (점 수 채움)',
-    failed: '실패',
-    interrupted: '중단됨 (서버 종료)',
-  }
-
-  function duration(from?: string, to?: string | number): string {
-    if (!from) return ''
-    const end = typeof to === 'number' ? to : to ? Date.parse(to) : Date.now()
-    let s = Math.max(0, Math.round((end - Date.parse(from)) / 1000))
-    const h = Math.floor(s / 3600)
-    const m = Math.floor((s % 3600) / 60)
-    s %= 60
-    return h ? `${h}시간 ${m}분 ${s}초` : m ? `${m}분 ${s}초` : `${s}초`
-  }
-  const time = (iso?: string) => (iso ? new Date(iso).toLocaleString('ko-KR', { hour12: false }) : '')
-  const clock = (iso: string) => new Date(iso).toLocaleTimeString('ko-KR', { hour12: false })
-  const fmt = (n: number) => Math.round(n).toLocaleString('ko-KR')
-  function bytes(samples: number[] = []): string {
-    return size(samples.reduce((a, n) => a + n, 0) * 2)
-  }
-  // units of 1024, as Windows shows disk sizes
-  function size(b: number): string {
-    const u = [
-      ['TB', 2 ** 40],
-      ['GB', 2 ** 30],
-      ['MB', 2 ** 20],
-      ['KB', 2 ** 10],
-    ] as const
-    for (const [name, n] of u) if (b >= n) return `${(b / n).toFixed(b / n < 10 ? 1 : 0)} ${name}`
-    return `${b} B`
-  }
-  function seconds(us: number): string {
-    const s = us / 1e6
-    return s >= 60 ? `${(s / 60).toFixed(1)}분` : `${s.toFixed(s < 10 ? 2 : 1)}초`
-  }
-  function how(c: Config): string {
-    const parts = [c.mode === 'extended' ? '확장' : '기본', `${c.servoPeriodUs / 1000} ms`]
-    parts.push(c.points ? `${fmt(c.points)}점` : '종료까지')
-    if (c.startSeq) parts.push(`N${c.startSeq}부터`)
-    if (c.trigger?.seq) parts.push(`책갈피 N${c.trigger.seq}`)
-    if (c.trigger?.signal) parts.push(`책갈피 ${c.trigger.signal}${c.trigger.up ? '↑' : ''}${c.trigger.down ? '↓' : ''}`)
-    return parts.join(' · ')
-  }
   const progress = $derived(
     status?.config?.points && status.samples?.length ? Math.min(1, status.samples[0] / status.config.points) : null,
   )
@@ -1238,40 +1184,8 @@
         {#if lowDisk}<br />⚠ 남은 공간이 기준보다 적어 새 수집을 시작할 수 없습니다. 지난 세션을 지우거나 deelook.toml의 minfree를 바꾸세요.{/if}
       </p>
     {/if}
-    {#if sessions.length}
-      <div class="scroll">
-        <table class="sessions">
-          <thead>
-            <tr><th>#</th><th>시작</th><th>길이</th><th>방식</th><th>채널</th><th>샘플/채널</th><th>책갈피</th><th>크기</th><th>상태</th><th></th></tr>
-          </thead>
-          <tbody>
-            {#each sessions as s (s.id)}
-              <tr>
-                <td>{s.id}</td>
-                <td>{time(s.startedAt)}</td>
-                <td>{s.status === 'running' ? '수집 중' : duration(s.startedAt, s.endedAt)}</td>
-                <td class="labels">{how(s.config)}</td>
-                <td class="labels">{s.config.channels.map((c) => (c.kind === 'pmcbit' ? (c.signals ?? []).join(' ') : c.label)).join(', ')}</td>
-                <td>{s.samples?.length ? fmt(s.samples[0]) : ''}</td>
-                <td>{s.events || ''}</td>
-                <td class="num">{size(s.size)}</td>
-                <td><span class="badge {s.status}" title={s.error}>{STATE[s.status] ?? s.status}</span></td>
-                <td class="links">
-                  <button class="link" onclick={() => (viewing = s)}>보기</button>
-                  {#if s.status !== 'running'}
-                    <a href={api.csvUrl(s.id)} download title="표로 (엑셀은 104만 행까지)">CSV</a>
-                    <a href={api.dbUrl(s.id)} download title="이 세션의 SQLite 파일 그대로: {s.file}">DB</a>
-                    <button class="link danger" onclick={() => deleteSession(s)}>삭제</button>
-                  {/if}
-                </td>
-              </tr>
-            {/each}
-          </tbody>
-        </table>
-      </div>
-    {:else}
-      <p class="hint">아직 기록이 없습니다.</p>
-    {/if}
+    <SessionList {machineId} version={listVersion} viewingId={viewing?.id ?? null} onview={(s) => (viewing = s)}
+      onchange={sessionsGone} />
   </section>
 </div>
 
@@ -1617,15 +1531,6 @@
   details.calls summary {
     cursor: pointer;
     color: var(--text-primary);
-  }
-  td.links {
-    white-space: nowrap;
-  }
-  td.links a {
-    margin-right: 8px;
-  }
-  button.link.danger {
-    color: #ff8a80;
   }
   .storage.warn {
     color: #ffb77c;

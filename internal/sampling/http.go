@@ -33,7 +33,12 @@ import (
 //	POST /api/sampling/{machine}/stop
 //	POST /api/sampling/{machine}/oneshot     body: OneShot (cnc_sdtread1shot)
 //	GET  /api/sampling/{machine}/live        newest samples (?window=3s&buckets=600)
-//	GET  /api/sampling/sessions              recorded sessions (?machine=&limit=)
+//	GET  /api/sampling/sessions              recorded sessions, newest first (?machine=&since=&until=&status=a,b&before=&limit=)
+//	GET  /api/sampling/sessions/days         per day: how many and their size (same filters, &tz= minutes east of UTC)
+//	GET  /api/sampling/sessions/{id}/info    one session
+//	POST /api/sampling/sessions/delete       delete many finished ones: {"ids"} or filters {"machine","since","until","status"},
+//	                                         {"dryRun": true} says what it would take
+//	GET  /api/sampling/sessions/zip          finished sessions' files in one zip (?ids=1,2,3)
 //	GET  /api/sampling/sessions/{id}/csv     one session as CSV
 //	GET  /api/sampling/sessions/{id}/view    a session reduced for charts (?from=&to= µs, &buckets=)
 //	GET  /api/sampling/sessions/{id}/db      a finished session's SQLite file, to hand over
@@ -187,17 +192,95 @@ func (m *Manager) Routes(mux *http.ServeMux) {
 		writeJSON(w, m.Live(r.PathValue("machine"), window, buckets))
 	})
 	mux.HandleFunc("GET /api/sampling/sessions", func(w http.ResponseWriter, r *http.Request) {
-		limit, err := strconv.Atoi(r.URL.Query().Get("limit"))
-		if err != nil || limit <= 0 || limit > 1000 {
-			limit = 50
+		f, err := filterFrom(r.URL.Query())
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
 		}
-		list, err := m.store.Sessions(r.URL.Query().Get("machine"), limit)
+		f.Limit, err = strconv.Atoi(r.URL.Query().Get("limit"))
+		if err != nil || f.Limit <= 0 || f.Limit > 5000 {
+			f.Limit = 50
+		}
+		list, err := m.store.SessionsWhere(f)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
 		writeJSON(w, list)
 	})
+	mux.HandleFunc("GET /api/sampling/sessions/days", func(w http.ResponseWriter, r *http.Request) {
+		f, err := filterFrom(r.URL.Query())
+		tz, terr := strconv.Atoi(r.URL.Query().Get("tz"))
+		if err == nil && terr != nil && r.URL.Query().Get("tz") != "" {
+			err = errors.New("bad tz: minutes east of UTC")
+		}
+		var days []Day
+		if err == nil {
+			days, err = m.store.Days(f, tz)
+		}
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		total := Day{}
+		for _, d := range days {
+			total.Count, total.Size = total.Count+d.Count, total.Size+d.Size
+		}
+		writeJSON(w, map[string]any{"days": days, "count": total.Count, "size": total.Size})
+	})
+	mux.HandleFunc("GET /api/sampling/sessions/{id}/info", func(w http.ResponseWriter, r *http.Request) {
+		id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+		if err != nil {
+			http.Error(w, "bad session id", http.StatusBadRequest)
+			return
+		}
+		si, err := m.store.Session(id)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusNotFound)
+			return
+		}
+		writeJSON(w, si)
+	})
+	mux.HandleFunc("POST /api/sampling/sessions/delete", func(w http.ResponseWriter, r *http.Request) {
+		if !jsonRequest(w, r) {
+			return
+		}
+		var req struct {
+			IDs     []int64  `json:"ids"`
+			Machine string   `json:"machine"`
+			Since   string   `json:"since"`
+			Until   string   `json:"until"`
+			Status  []string `json:"status"`
+			DryRun  bool     `json:"dryRun"`
+		}
+		if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<20)).Decode(&req); err != nil {
+			http.Error(w, "bad request body: "+err.Error(), http.StatusBadRequest)
+			return
+		}
+		ids, size := req.IDs, int64(0)
+		if len(ids) == 0 {
+			// by filters: a time limit is needed, so a slip never means "all"
+			if req.Until == "" {
+				http.Error(w, "give the sessions (ids) or a time limit (until)", http.StatusBadRequest)
+				return
+			}
+			f := SessionFilter{Machine: req.Machine, Since: req.Since, Until: req.Until, Status: req.Status}
+			var err error
+			if err = f.Check(); err == nil {
+				ids, size, err = m.store.Finished(f)
+			}
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusBadRequest)
+				return
+			}
+		}
+		if req.DryRun {
+			writeJSON(w, Deleted{Count: len(ids), Size: size})
+			return
+		}
+		writeJSON(w, m.store.DeleteMany(ids))
+	})
+	mux.HandleFunc("GET /api/sampling/sessions/zip", m.handleZip)
 	mux.HandleFunc("GET /api/sampling/sessions/{id}/view", func(w http.ResponseWriter, r *http.Request) {
 		id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
 		if err != nil {

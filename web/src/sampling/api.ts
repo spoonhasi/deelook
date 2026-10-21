@@ -199,6 +199,42 @@ async function post<T>(url: string, body: unknown = {}, method = 'POST'): Promis
 
 const m = (id: string) => `/api/sampling/${encodeURIComponent(id)}`
 
+/** Which recorded sessions: times are RFC 3339 (a session counts by when it started). */
+export interface SessionQuery {
+  machine?: string // '' or none: every machine
+  since?: string
+  until?: string
+  status?: string[]
+  before?: number // numbers below this: the next part
+  limit?: number
+}
+
+/** How many sessions started on a day (where the page is), and their size. */
+export interface DaySummary {
+  day: string // YYYY-MM-DD
+  count: number
+  size: number
+}
+
+/** What a delete of many took. */
+export interface Deleted {
+  count: number
+  size: number
+  failed?: Record<string, string>
+}
+
+function sessionQuery(q: SessionQuery & { tz?: number }): string {
+  const p = new URLSearchParams()
+  if (q.machine) p.set('machine', q.machine)
+  if (q.since) p.set('since', q.since)
+  if (q.until) p.set('until', q.until)
+  if (q.status?.length) p.set('status', q.status.join(','))
+  if (q.before) p.set('before', String(q.before))
+  if (q.limit) p.set('limit', String(q.limit))
+  if (q.tz !== undefined) p.set('tz', String(q.tz))
+  return p.toString()
+}
+
 export const api = {
   types: () => get<Types>('/api/sampling/types'),
   machines: () => get<{ library?: Library; hub: HubState; machines: MachineInfo[] }>('/api/sampling/machines'),
@@ -227,6 +263,17 @@ export const api = {
     post<OneShotResult>(`${m(id)}/oneshot`, { servoPeriodUs, channels }),
   live: (id: string) => get<Live>(`${m(id)}/live?window=3s&buckets=600`),
   sessions: (id: string) => get<SessionInfo[]>(`/api/sampling/sessions?machine=${encodeURIComponent(id)}&limit=50`),
+  sessionList: (q: SessionQuery) => get<SessionInfo[]>(`/api/sampling/sessions?${sessionQuery(q)}`),
+  /** Per day, newest first, in this browser's time zone. */
+  sessionDays: (q: SessionQuery) =>
+    get<{ days: DaySummary[]; count: number; size: number }>(
+      `/api/sampling/sessions/days?${sessionQuery({ ...q, tz: -new Date().getTimezoneOffset() })}`,
+    ),
+  session: (id: number) => get<SessionInfo>(`/api/sampling/sessions/${id}/info`),
+  /** Deletes finished sessions: these, or (no ids) those the filters select; dryRun only counts them. */
+  deleteSessions: (body: { ids?: number[]; machine?: string; until?: string; dryRun?: boolean }) =>
+    post<Deleted>('/api/sampling/sessions/delete', body),
+  zipUrl: (ids: number[]) => `/api/sampling/sessions/zip?ids=${ids.join(',')}`,
   view: (id: number, fromUs = 0, toUs = 0) =>
     get<View>(`/api/sampling/sessions/${id}/view?from=${Math.round(fromUs)}&to=${Math.round(toUs)}&buckets=600`),
   csvUrl: (id: number) => `/api/sampling/sessions/${id}/csv`,

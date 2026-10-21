@@ -109,11 +109,15 @@ _실행 중인 deelook의 `/help`에서는 여기에 허브 연결, FOCAS2 라�
 | `POST /api/sampling/{machine}/stop` | 수집 종료 |
 | `POST /api/sampling/{machine}/oneshot` | 현재값: `{"servoPeriodUs", "channels"}` |
 | `GET /api/sampling/{machine}/live?window=3s&buckets=600` | 최근 값(구간마다 최솟값·최댓값) |
-| `GET /api/sampling/sessions?machine=&limit=50` | 기록된 세션, 최근 것부터 |
+| `GET /api/sampling/sessions?machine=&since=&until=&status=&before=&limit=50` | 기록된 세션, 최근 것부터. 시각은 RFC 3339(시작한 때 기준), `status`는 쉼표로(`stopped,completed`), `before`는 그 번호 아래(다음 묶음), `limit` 최대 5000 |
+| `GET /api/sampling/sessions/days?tz=540&…` | 같은 거르기로 날짜별 건수·크기, 최근 날부터(`tz`: UTC보다 몇 분 앞선 곳의 날짜) |
+| `GET /api/sampling/sessions/{id}/info` | 세션 하나 |
 | `GET /api/sampling/sessions/{id}/view?from=&to=&buckets=` | 세션 전체 또는 구간(µs)의 차트용 값 |
 | `GET /api/sampling/sessions/{id}/csv` | 세션을 CSV로 |
 | `GET /api/sampling/sessions/{id}/db` | 끝난 세션의 SQLite 파일 |
 | `DELETE /api/sampling/sessions/{id}` | 끝난 세션(파일) 지우기 |
+| `POST /api/sampling/sessions/delete` | 끝난 세션 여러 개 지우기: `{"ids": [...]}` 또는 `{"machine", "until"}`(그때보다 앞서 시작한 것, `until` 필수). `"dryRun": true`면 지우지 않고 몇 건·몇 바이트인지만 |
+| `GET /api/sampling/sessions/zip?ids=1,2,3` | 끝난 세션 파일들을 zip 하나로 (2000건까지) |
 | `GET /api/sampling/storage` | 남은 디스크 공간, 세션 파일 합계, `minfree` |
 | `GET /api/ui/{key}`, `PUT /api/ui/{key}` | 수집 화면이 맞춰 둔 설정(JSON): `sampling.pick`(고른 목록·기계), `sampling.form.{machine}`(그 기계의 수집 설정). 없으면 `null`, `null`을 넣으면 지움 |
 
