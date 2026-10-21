@@ -3,6 +3,7 @@ package sampling
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"mime"
 	"net/http"
 	"os"
@@ -36,6 +37,8 @@ import (
 //	GET  /api/sampling/sessions/{id}/db      a finished session's SQLite file, to hand over
 //	DELETE /api/sampling/sessions/{id}       delete a finished session (its file)
 //	GET  /api/sampling/storage               free disk space and the session files' size
+//	GET  /api/ui/{key}                       what the sampling page stored under key (JSON), null if nothing
+//	PUT  /api/ui/{key}                       store it (body: JSON, null removes; ui.go)
 func (m *Manager) Routes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/sampling/types", func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, map[string]any{"servo": ServoTypes, "spindle": SpindleTypes, "cnc": CncInfoTypes,
@@ -94,6 +97,32 @@ func (m *Manager) Routes(mux *http.ServeMux) {
 		}
 		if err := m.RefreshNames(r.Context(), r.PathValue("machine")); err != nil {
 			http.Error(w, err.Error(), http.StatusConflict)
+			return
+		}
+		writeJSON(w, map[string]bool{"ok": true})
+	})
+	mux.HandleFunc("GET /api/ui/{key}", func(w http.ResponseWriter, r *http.Request) {
+		v, err := m.store.UI(r.PathValue("key"))
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		if v == nil {
+			v = json.RawMessage("null")
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write(v)
+	})
+	mux.HandleFunc("PUT /api/ui/{key}", func(w http.ResponseWriter, r *http.Request) {
+		if !jsonRequest(w, r) {
+			return
+		}
+		body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, maxUIValue+1))
+		if err == nil {
+			err = m.store.SetUI(r.PathValue("key"), body)
+		}
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
 		writeJSON(w, map[string]bool{"ok": true})

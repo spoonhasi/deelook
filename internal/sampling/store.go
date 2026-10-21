@@ -87,6 +87,11 @@ CREATE TABLE IF NOT EXISTS meta (
 	key   TEXT PRIMARY KEY,                  -- last_session_id, last_local_machine, hub_synced_at
 	value TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS ui (          -- what the sampling page was set to, kept for it (ui.go)
+	key        TEXT PRIMARY KEY,             -- sampling.pick, sampling.form.<machine>
+	value      TEXT NOT NULL,                -- JSON, as the page sent it
+	updated_at TEXT NOT NULL
+);
 `
 
 const sessionSchema = `

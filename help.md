@@ -75,7 +75,7 @@ _실행 중인 deelook의 `/help`에서는 여기에 허브 연결, FOCAS2 라�
 | 이름 | 내용 |
 |---|---|
 | `sessions\` | 수집 한 건마다 파일 하나, `20261014-234235_bench-31i_s9.db` (현지 시각, 기계 이름, 세션 번호). 넘겨줄 것 |
-| `deelook.db` | deelook 내부용: 세션 목록, 세션 번호, 기계 목록과 IP. 넘겨주지 않음. 지워도 세션 파일로 목록이 다시 만들어짐 |
+| `deelook.db` | deelook 내부용: 세션 목록, 세션 번호, 기계 목록과 IP, 수집 화면 설정(기계마다). 넘겨주지 않음. 지워도 세션 파일로 목록이 다시 만들어짐 |
 
 세션 파일 안: `session`(설정과 결과 한 줄), `chunks`(채널별 샘플 묶음: 16비트 원시값, little endian), `events`(책갈피 = 트리거).
 샘플 i는 첫 샘플부터 i×주기 뒤의 값입니다. 파일 안의 시각은 UTC입니다.
@@ -114,6 +114,7 @@ _실행 중인 deelook의 `/help`에서는 여기에 허브 연결, FOCAS2 라�
 | `GET /api/sampling/sessions/{id}/db` | 끝난 세션의 SQLite 파일 |
 | `DELETE /api/sampling/sessions/{id}` | 끝난 세션(파일) 지우기 |
 | `GET /api/sampling/storage` | 남은 디스크 공간, 세션 파일 합계, `minfree` |
+| `GET /api/ui/{key}`, `PUT /api/ui/{key}` | 수집 화면이 맞춰 둔 설정(JSON): `sampling.pick`(고른 목록·기계), `sampling.form.{machine}`(그 기계의 수집 설정). 없으면 `null`, `null`을 넣으면 지움 |
 
 수집 설정(`start` 본문):
 

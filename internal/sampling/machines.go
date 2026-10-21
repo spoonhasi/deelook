@@ -458,7 +458,11 @@ func (m *Manager) DeleteMachine(id string) error {
 	if r != nil && r.active() {
 		return errors.New("the machine is sampling")
 	}
-	return m.list.deleteLocal(id)
+	if err := m.list.deleteLocal(id); err != nil {
+		return err
+	}
+	_ = m.store.SetUI("sampling.form."+id, json.RawMessage("null")) // its stored setup
+	return nil
 }
 
 // RefreshNames reads a machine's axis names over FOCAS2 and stores them.

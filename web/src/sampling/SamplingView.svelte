@@ -6,7 +6,7 @@
   //             block N; cnc_sdtread1shot for present values
   //   extended  cnc_sdtsetchnl2/startsmpl2/readsmpl2/endsmpl2: also PMC
   //             signals and CNC information, and trigger marks
-  import { onMount } from 'svelte'
+  import { onDestroy, onMount } from 'svelte'
   import {
     api,
     type ChannelConfig,
@@ -84,27 +84,61 @@
 
   // the machines come from two lists, one shown at a time: the hub's and
   // those added here by address. The list and the machine picked in each are
-  // kept in this browser.
+  // kept in deelook.db (ui.go), like each machine's setup below.
   type Source = 'hub' | 'local'
   let source = $state<Source>('hub')
   const hubMachines = $derived(machines.filter((m) => m.source !== 'local'))
   const localMachines = $derived(machines.filter((m) => m.source === 'local'))
   const shown = $derived(source === 'hub' ? hubMachines : localMachines)
-  const PICK_KEY = 'deelook.sampling.pick'
+  const PICK_KEY = 'sampling.pick'
   let picked: Record<Source, string> = { hub: '', local: '' }
-  function loadPick(): { source?: Source; hub?: string; local?: string } {
+  async function loadPick(): Promise<{ source?: Source; hub?: string; local?: string }> {
     try {
-      return JSON.parse(localStorage.getItem(PICK_KEY) ?? '{}')
+      return (await api.ui<{ source?: Source; hub?: string; local?: string }>(PICK_KEY)) ?? {}
     } catch {
       return {}
     }
   }
   function savePick() {
-    try {
-      localStorage.setItem(PICK_KEY, JSON.stringify({ source, ...picked }))
-    } catch {
-      // private window: remembered for this page only
+    void api.setUI(PICK_KEY, { source, ...picked }).catch(() => {})
+  }
+
+  // Each machine's setup (mode, period, length, bookmarks, channels) is kept
+  // in deelook.db as it is edited, and comes back when the machine is shown
+  // again: after deelook restarts, after the HMI page, in another browser.
+  // A machine without one starts from its last session's setup.
+  type Form = typeof form
+  const formKey = (id: string) => `sampling.form.${id}`
+  let formFor = $state('') // the machine whose setup the form holds; '' while it loads
+  let pending: { key: string; value: unknown } | null = null
+  let saveTimer: ReturnType<typeof setTimeout> | undefined
+  function flushForm() {
+    clearTimeout(saveTimer)
+    if (pending) void api.setUI(pending.key, pending.value).catch(() => {})
+    pending = null
+  }
+  $effect(() => {
+    const value = $state.snapshot(form) // every field, channels included
+    const id = machineId
+    if (!id || formFor !== id) return
+    pending = { key: formKey(id), value }
+    clearTimeout(saveTimer)
+    saveTimer = setTimeout(flushForm, 400)
+  })
+  onDestroy(flushForm) // going to another page
+  $effect(() => {
+    addEventListener('pagehide', flushForm) // closing or reloading the tab
+    return () => removeEventListener('pagehide', flushForm)
+  })
+  /** Puts a stored setup into the form, field by field, ignoring what does not fit. */
+  function fromSaved(f: Partial<Form>) {
+    const target = form as Record<string, unknown>
+    for (const [k, v] of Object.entries(f)) {
+      if (k !== 'channels' && k in form && typeof v === typeof target[k]) target[k] = v
     }
+    if (form.mode === 'extended' && !extOk) form.mode = 'basic'
+    const chs = Array.isArray(f.channels) ? f.channels.filter((c) => c && EXT_KINDS.includes(c.kind)) : []
+    form.channels = chs.length ? chs.map((c) => ({ ...c, signals: c.signals ? [...c.signals] : undefined })) : [newChannel()]
   }
   /** Shows a list and the machine last picked in it (or its first). */
   async function selectSource(src: Source) {
@@ -114,6 +148,8 @@
     if (id) {
       await selectMachine(id)
     } else {
+      flushForm()
+      formFor = ''
       machineId = ''
       viewing = null
       sessions = []
@@ -405,6 +441,8 @@
   }
 
   async function selectMachine(id: string) {
+    flushForm() // the machine shown so far keeps its last edit
+    formFor = ''
     machineId = id
     const m = machines.find((x) => x.machine === id)
     if (m) {
@@ -416,7 +454,11 @@
     live = { channels: [], events: [] }
     shot = null
     await loadSessions()
-    fromConfig(sessions.find((s) => s.config?.channels?.length)?.config)
+    const saved = await api.ui<Partial<Form>>(formKey(id)).catch(() => null)
+    if (machineId !== id) return // another machine was picked meanwhile
+    if (saved) fromSaved(saved)
+    else fromConfig(sessions.find((s) => s.config?.channels?.length)?.config)
+    formFor = id
     if (statuses.find((s) => s.machine === id)?.session) void loadLive()
   }
 
@@ -433,7 +475,7 @@
       const [t] = await Promise.all([api.types(), loadMachines()])
       types = t
       statuses = await api.status().catch(() => [])
-      const p = loadPick()
+      const p = await loadPick()
       picked = { hub: p.hub ?? '', local: p.local ?? '' }
       // the list used last time, unless it is empty and the other is not
       let src: Source = p.source === 'local' ? 'local' : 'hub'
@@ -496,6 +538,8 @@
     if (!machine || !confirm(`${machine.name} (${machine.machine})을(를) 목록에서 지울까요?\n이 기계로 기록한 세션 파일은 지워지지 않습니다.`))
       return
     const gone = machineId
+    pending = null // its setup goes with it (the server removes it)
+    formFor = ''
     const ok = await manage(async () => {
       await api.deleteMachine(gone)
       machines = machines.filter((m) => m.machine !== gone)
@@ -738,7 +782,7 @@
             <li>둘 다 <b>데이터 폴더의 <code>deelook.db</code></b>에 IP·포트와 함께 저장됩니다. 설정 파일 <code>deelook.toml</code>에는
               들어가지 않고, 넘겨주는 세션 파일에도 IP·포트는 없습니다.</li>
             <li>어느 목록이든 수집은 deelook이 CNC에 직접 FOCAS2로 연결해서 합니다. 허브는 기계 목록과 축 이름을 알려 줄 뿐입니다.</li>
-            <li>고른 목록과 목록마다 고른 기계는 이 브라우저에 기억됩니다.</li>
+            <li>고른 목록과 목록마다 고른 기계, 기계마다의 수집 설정(방식·주기·길이·책갈피·채널)은 <code>deelook.db</code>에 저장되어, deelook을 다시 시작하거나 다른 페이지에 갔다 와도, 다른 PC의 브라우저에서 열어도 그대로 나옵니다.</li>
           </ul>
         </HelpButton>
       </div>

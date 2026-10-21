@@ -203,6 +203,17 @@ export const api = {
   machines: () => get<{ library?: Library; hub: HubState; machines: MachineInfo[] }>('/api/sampling/machines'),
   addMachine: (name: string, host: string, port: number) =>
     post<{ machine: string }>('/api/sampling/machines', { name, host, port }),
+  /** What the page stored under key in deelook.db, null when nothing yet. */
+  ui: <T>(key: string) => get<T | null>(`/api/ui/${encodeURIComponent(key)}`),
+  /** Stores value under key; keepalive lets it finish while the page is being left. */
+  setUI: async (key: string, value: unknown) => {
+    await fetch(`/api/ui/${encodeURIComponent(key)}`, {
+      method: 'PUT',
+      keepalive: true,
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(value),
+    })
+  },
   /** Renames a machine added here; a host or port (empty, 0: as it is) moves it there. */
   updateMachine: (id: string, name: string, host: string, port: number) =>
     post<{ ok: boolean }>(`/api/sampling/machines/${encodeURIComponent(id)}`, { name, host, port }, 'PATCH'),

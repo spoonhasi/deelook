@@ -3,6 +3,8 @@ package sampling
 import (
 	"bytes"
 	"database/sql"
+	"encoding/json"
+	"net/http"
 	"os"
 	"path/filepath"
 	"slices"
@@ -11,6 +13,7 @@ import (
 	"time"
 
 	"deelook/internal/focas"
+	"deelook/internal/hub"
 )
 
 func TestStoreCSV(t *testing.T) {
@@ -524,4 +527,54 @@ func TestStoreReconcile(t *testing.T) {
 	if next := record(st, time.Now()); next != o2+1 {
 		t.Errorf("next session %d after a rebuild, want %d", next, o2+1)
 	}
+}
+
+// The page's stored settings: kept by key, replaced, removed with null,
+// and only sensible keys and JSON taken.
+func TestStoreUI(t *testing.T) {
+	st, err := OpenStore(t.TempDir(), "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	if v, err := st.UI("sampling.form.L1"); err != nil || v != nil {
+		t.Fatalf("nothing stored: %s %v", v, err)
+	}
+	for _, v := range []string{`{"mode":"basic","channels":[{"kind":"servo"}]}`, `{"mode":"extended"}`} {
+		if err := st.SetUI("sampling.form.L1", json.RawMessage(v)); err != nil {
+			t.Fatal(err)
+		}
+		if got, _ := st.UI("sampling.form.L1"); string(got) != v {
+			t.Errorf("stored %s, read %s", v, got)
+		}
+	}
+	if err := st.SetUI("sampling.form.L1", json.RawMessage("null")); err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := st.UI("sampling.form.L1"); got != nil {
+		t.Errorf("null left %s", got)
+	}
+	for _, bad := range []struct{ key, value string }{
+		{"../x", `{}`}, {"", `{}`}, {"a b", `{}`}, {"ok", `{not json`},
+		{"ok", `"` + strings.Repeat("x", maxUIValue) + `"`},
+	} {
+		if err := st.SetUI(bad.key, json.RawMessage(bad.value)); err == nil {
+			t.Errorf("took key %q value %.20s", bad.key, bad.value)
+		}
+	}
+}
+
+// Every route registers: the mux panics on two patterns that match the
+// same path without one being more specific.
+func TestRoutes(t *testing.T) {
+	st, err := OpenStore(t.TempDir(), "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	ms, err := OpenMachines(st)
+	if err != nil {
+		t.Fatal(err)
+	}
+	NewManager(hub.New("http://127.0.0.1:1", time.Second), st, ms, nil, "", nil).Routes(http.NewServeMux())
 }
