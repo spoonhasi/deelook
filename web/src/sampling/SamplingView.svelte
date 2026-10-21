@@ -685,17 +685,22 @@
         <span class="hint">{ext ? '트리거 블록 번호를 볼 계통' : '시작 블록 번호를 볼 계통'}</span>
       </label>
 
-      {#if !ext}
-        <div class="row">
-          <span>시작</span>
+      <div class="row">
+        <span>시작</span>
+        {#if !ext}
           <label class="opt"><input type="radio" bind:group={form.waitBlock} value={false} disabled={locked} />즉시</label>
           <label class="opt"><input type="radio" bind:group={form.waitBlock} value={true} disabled={locked} />블록 N</label>
           {#if form.waitBlock}
             <input type="number" class="wide" min="1" bind:value={form.startSeq} disabled={locked} />
             <span class="hint">이 시퀀스 번호가 실행되면 CNC가 수집을 시작</span>
           {/if}
-        </div>
-      {:else}
+        {:else}
+          <!-- cnc_sdtstartsmpl2 has no start block: it starts at once -->
+          <label class="opt"><input type="radio" checked disabled />즉시</label>
+          <span class="hint">확장 방식은 늘 즉시 시작합니다 (블록 N에서 시작은 기본 방식만)</span>
+        {/if}
+      </div>
+      {#if ext}
         <div class="row">
           <span>트리거</span>
           <label class="opt"><input type="checkbox" bind:checked={form.trgSeqOn} disabled={locked} />블록 N</label>
@@ -709,8 +714,8 @@
             <select bind:value={form.trgUnit} disabled={locked} aria-label="트리거 PMC 경로">
               {#each PMC_UNITS as u (u)}<option value={u}>PMC{u}</option>{/each}
             </select>
-            <label class="opt"><input type="checkbox" bind:checked={form.trgUp} disabled={locked} />상승</label>
-            <label class="opt"><input type="checkbox" bind:checked={form.trgDown} disabled={locked} />하강</label>
+            <label class="opt"><input type="checkbox" bind:checked={form.trgUp} disabled={locked} />상승 (0→1)</label>
+            <label class="opt"><input type="checkbox" bind:checked={form.trgDown} disabled={locked} />하강 (1→0)</label>
           {/if}
         </div>
         <p class="hint">
