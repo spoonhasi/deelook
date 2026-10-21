@@ -11,6 +11,7 @@
     api,
     type ChannelConfig,
     type Config,
+    type DataType,
     type Kind,
     type Library,
     type Live,
@@ -303,6 +304,16 @@
 
   // read1shot works on servo and spindle channels only
   const shotChannels = $derived(form.channels.filter((c) => BASIC_KINDS.includes(c.kind)))
+
+  /** What a channel's data is, for its menu's tooltip (the table is in the reference below). */
+  function typeTip(d: DataType | undefined, shift: number): string {
+    if (!d) return ''
+    const lines = [`${d.nameKo} (${d.name})`]
+    for (const x of d.units) lines.push(`단위: ${x.raw}${x.means ? ` = ${x.means}` : ''}${x.when ? ` (${x.when})` : ''}`)
+    if (d.note) lines.push(d.note)
+    if (shift) lines.push(`시프트 ${shift}: 받은 값 × ${2 ** shift} = 위 단위의 값`)
+    return lines.join('\n')
+  }
 
   /** A PMC address as FOCAS2 takes it, PMC_DATA: R9091.6 is {unittype 1, adr 5 (R), bit 6, no 9091}. */
   function pmcData(addr: string, unit: number): string {
@@ -734,14 +745,18 @@
             <option value={m.machine}>{m.name || '?'} ({source === 'local' ? m.machine : `machine ${m.machine}`})</option>
           {/each}
         </select>
-        <button type="button" onclick={openAdd} disabled={busy} title="허브에 없는 FANUC 기계를 IP로 추가">추가</button>
-        <button type="button" onclick={openEdit} disabled={busy || !machine}
-          title={machine?.source === 'local' ? '이름·주소 바꾸기, 축 이름 읽기, 지우기' : '축 이름 읽기 (허브 기계의 이름·주소는 허브에서)'}>변경</button>
+        {#if source === 'local'}
+          <!-- the hub's machines are named and placed on the hub -->
+          <button type="button" onclick={openAdd} disabled={busy} title="허브에 없는 FANUC 기계를 IP로 추가">추가</button>
+          <button type="button" onclick={openEdit} disabled={busy || !machine} title="이름·주소 바꾸기, 축 이름 읽기, 지우기">변경</button>
+        {/if}
       </div>
       {#if machine?.error}<p class="error">{machine.error}</p>{/if}
       {#if machine?.note}
         <p class="hint">
-          {machine.note === 'axis names not known' ? '축 이름을 모릅니다' : machine.note} — 축은 번호로 고르거나, "변경"에서 "축 이름을 CNC에서 읽기"를 누르세요.
+          {machine.note === 'axis names not known' ? '축 이름을 모릅니다' : machine.note} — 축은 번호로 고르거나
+          <button type="button" class="link" onclick={readNames} disabled={manageBusy || active || !libOk}>축 이름을 CNC에서 읽기</button>
+          {#if manageMsg && !addOpen && !editOpen}<br /><span class="error">{manageMsg}</span>{/if}
         </p>
       {/if}
       {#if loaded && !shown.length}
@@ -966,7 +981,7 @@
               {/if}
               {#if typed(c.kind)}
                 <select class="grow type" value={c.type} onchange={(e) => setType(c, Number(e.currentTarget.value))} disabled={locked}
-                  aria-label="채널 {i + 1} 데이터">
+                  aria-label="채널 {i + 1} 데이터" title={typeTip(d, c.shift)}>
                   {#each types[c.kind] as t (t.type)}
                     <option value={t.type}>{t.type}. {t.code} — {t.nameKo}</option>
                   {/each}
@@ -979,27 +994,15 @@
               <button class="icon" title="채널 삭제" aria-label="채널 {i + 1} 삭제" disabled={locked || form.channels.length === 1}
                 onclick={() => form.channels.splice(i, 1)}>✕</button>
             </div>
-            <p class="desc">
-              {#if d}
-                <b>{d.nameKo}</b> <span class="en">{d.name}</span>
-                {#each d.units as x, k (k)}<br />단위: {x.raw}{x.means ? ` = ${x.means}` : ''}{#if x.when}{' '}({x.when}){/if}{/each}
-                {#if d.note}<br />{d.note}{/if}
-                {#if c.shift}<br />시프트 {c.shift}: 받은 값 × {2 ** c.shift} = 위 단위의 값{/if}
-              {:else if c.kind === 'pmcbit'}PMC 비트 신호 최대 16개를 한 채널에 (쉼표로 구분, 예: Y0.4, X8.4) — 값의 비트 i가 i번째 신호.
-                CNC에는 맨 마지막 채널로 보냅니다(다른 채널 앞에 두면 그 뒤 채널 데이터가 2워드씩 밀려 돌아옴: NCGuide·30i-B에서 확인)
-              {:else if c.kind === 'pmcbyte'}PMC 바이트 1개 (예: R100) — 30i-B 이후
-              {:else if c.kind === 'pmcword'}PMC 워드 1개 (예: D200) — 30i-B 이후
-              {/if}
-            </p>
           </li>
         {/each}
       </ol>
       <div class="row add">
-        <button class="ghost" disabled={locked || form.channels.length >= MAX_CHANNELS} onclick={() => form.channels.push(newChannel())}>+ 채널 추가</button>
+        <button class="ghost cmd" disabled={locked || form.channels.length >= MAX_CHANNELS} onclick={() => form.channels.push(newChannel())}>+ 채널 추가</button>
         <!-- in both modes (off in basic), like the bookmarks -->
-        <button class="ghost" disabled={!ext || locked || form.channels.length >= MAX_CHANNELS || form.channels.some((c) => c.kind === 'pmcbit')}
+        <button class="ghost cmd" disabled={!ext || locked || form.channels.length >= MAX_CHANNELS || form.channels.some((c) => c.kind === 'pmcbit')}
           title={ext ? '' : '확장 방식에서만'} onclick={() => form.channels.push(newChannel('pmcbit'))}>+ PMC 비트</button>
-        <button class="ghost" disabled={!ext || locked || form.channels.length >= MAX_CHANNELS}
+        <button class="ghost cmd" disabled={!ext || locked || form.channels.length >= MAX_CHANNELS}
           title={ext ? '' : '확장 방식에서만'} onclick={() => form.channels.push(newChannel('cnc'))}>+ N 번호</button>
         <HelpButton title="채널">
           <ul>
@@ -1017,8 +1020,8 @@
       </div>
 
       <div class="actions">
-        <button class="primary" onclick={start} disabled={busy || active || !machineId || !!machine?.error || problems.length > 0 || !libOk || lowDisk}>수집 시작</button>
-        <button class="danger" onclick={stop} disabled={busy || !active}>수집 종료</button>
+        <button class="primary cmd" onclick={start} disabled={busy || active || !machineId || !!machine?.error || problems.length > 0 || !libOk || lowDisk}>수집 시작</button>
+        <button class="danger cmd" onclick={stop} disabled={busy || !active}>수집 종료</button>
         <HelpButton title="이 설정이 부르는 FOCAS2 함수" label="FOCAS2 함수">
           <ol class="calls">
             {#each calls as [fn, what], i (i)}<li><code>{fn}</code> {what}</li>{/each}
@@ -1359,10 +1362,12 @@
   .ch .type {
     flex-basis: 220px;
   }
-  .desc {
-    margin: 3px 0 0 20px;
-    font-size: 11px;
-    color: var(--text-secondary);
+  /* one width for the channel and start/stop buttons, so they line up */
+  button.cmd {
+    width: 7.5em;
+    padding-left: 0;
+    padding-right: 0;
+    text-align: center;
   }
   .num {
     text-align: right;
@@ -1476,10 +1481,6 @@
   }
   .explain {
     color: var(--text-secondary);
-  }
-  .desc .en {
-    font-size: 11px;
-    opacity: 0.8;
   }
   .warn {
     color: #ffb77c;
