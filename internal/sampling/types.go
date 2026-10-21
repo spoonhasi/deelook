@@ -130,8 +130,8 @@ var SpindleTypes = []DataType{
 // CncInfoTypes are what a CNC information channel (cnc_sdtsetchnl2) carries,
 // sampled every 4 ms (repeated to fill the channel's period).
 var CncInfoTypes = []DataType{
-	{Type: 1, Code: "ONO", Name: "Program number (O number)", NameKo: "프로그램 번호 (O 번호)", Units: []Unit{u("값", "번호 그대로")}, Note: "4 ms마다 갱신 (1 ms 채널이면 같은 값 4개)"},
-	{Type: 2, Code: "NNO", Name: "Sequence number (N number)", NameKo: "시퀀스 번호 (N 번호)", Units: []Unit{u("값", "번호 그대로")}, Note: "4 ms마다 갱신 (1 ms 채널이면 같은 값 4개)"},
+	{Type: 1, Code: "ONO", Name: "Program number (O number)", NameKo: "프로그램 번호 (O 번호)", Units: []Unit{u("값", "번호 그대로")}, Note: "4 ms마다 갱신 (1 ms 채널이면 같은 값 4개). 수집을 시작하면 다음 블록이 시작될 때까지 0"},
+	{Type: 2, Code: "NNO", Name: "Sequence number (N number)", NameKo: "시퀀스 번호 (N 번호)", Units: []Unit{u("값", "번호 그대로")}, Note: "4 ms마다 갱신 (1 ms 채널이면 같은 값 4개). 수집을 시작하면 다음 블록이 시작될 때까지 0"},
 }
 
 func init() {
