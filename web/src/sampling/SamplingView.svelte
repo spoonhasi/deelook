@@ -305,6 +305,11 @@
   // read1shot works on servo and spindle channels only
   const shotChannels = $derived(form.channels.filter((c) => BASIC_KINDS.includes(c.kind)))
 
+  const SHIFT_TIP =
+    '오른쪽 시프트 n (0~15): CNC가 값을 2ⁿ으로 나눠 16비트(-32768~32767)에 담아 보냅니다.\n' +
+    '데이터를 고르면 FANUC 권장값으로 바뀝니다 (대부분 0, 속도 지령 9, 속도 피드백 3).\n' +
+    '크게 하면 큰 값도 넘치지 않지만 거칠어지고, 작게 하면 세밀하지만 큰 값이 넘쳐 엉뚱한 값이 됩니다.'
+
   /** What a channel's data is, for its menu's tooltip (the table is in the reference below). */
   function typeTip(d: DataType | undefined, shift: number): string {
     if (!d) return ''
@@ -990,7 +995,7 @@
                 </select>
               {/if}
               {#if c.kind === 'servo' || c.kind === 'spindle'}
-                <label class="opt" title="오른쪽 시프트 (0-15): 값을 2^n으로 나눠 16비트에 맞춥니다">≫
+                <label class="opt shift" title={SHIFT_TIP}>시프트
                   <input type="number" min="0" max="15" bind:value={c.shift} disabled={locked} aria-label="채널 {i + 1} 시프트" /></label>
               {/if}
               <button class="icon" title="채널 삭제" aria-label="채널 {i + 1} 삭제" disabled={locked || form.channels.length === 1}
@@ -1010,8 +1015,13 @@
           <ul>
             <li>최대 8채널. 서보는 DSP(2축)당 4채널 정도, 주축은 앰프당 2채널까지입니다. 넘으면 CNC가 <code>EW_DATA</code>로
               거부합니다(31i 벤치에서 X1 7채널 + Z1 1채널이 거부됨).</li>
-            <li>값은 CNC가 주는 16비트 원시값이고, 단위는 데이터마다 다릅니다(채널 아래 "단위"). 값이 16비트를 넘는 데이터는 시프트로
-              2<sup>n</sup>으로 나눠 받습니다.</li>
+            <li>값은 CNC가 주는 16비트 원시값(-32768~32767)이고, 단위는 데이터마다 다릅니다(데이터 메뉴에 마우스를 올리면 나옴,
+              전체 표는 아래 안내).</li>
+            <li><b>시프트</b>: CNC 안의 값은 16비트보다 큰 경우가 있어서, CNC가 2<sup>n</sup>으로 나눈 뒤(오른쪽으로 n비트 밀어서)
+              16비트에 담아 보냅니다. 예를 들어 속도 지령은 16,777,216이 3750 min⁻¹이라 그대로는 16비트에 안 들어가므로 시프트 9(÷512)로
+              받으면 32,768이 3750 min⁻¹입니다. 데이터를 고르면 FANUC 레퍼런스의 권장값으로 바뀌고(대부분 0, 속도 지령 9, 속도 피드백
+              3) 보통은 그대로 두면 됩니다. 크게 하면 넘치지 않지만 값이 거칠어지고, 작게 하면 세밀하지만 큰 값이 넘쳐 엉뚱한 값이
+              됩니다.</li>
             <li>데이터 종류는 서보 0~46번, 주축 0~21번입니다. 31i 벤치·NC Guide는 모든 종류를 받았고, 그 기계에 없는 장치의
               종류는 거부되지 않고 0으로 옵니다. 되는지는 값이 의미 있게 나오는지로 봅니다.</li>
             <li>확장 방식에서는 PMC 비트(16개까지 한 채널, 하나만), PMC 바이트·워드, CNC 정보(O·N 번호) 채널도 됩니다. PMC 비트
@@ -1326,6 +1336,17 @@
   input[type='radio'],
   input[type='checkbox'] {
     accent-color: #3987e5;
+  }
+  /* menus, fields and buttons share one height, so the controls of a row line up */
+  select,
+  input:not([type='radio']):not([type='checkbox']),
+  button:not(.link) {
+    box-sizing: border-box;
+    height: 32px;
+  }
+  .shift {
+    font-size: 12px;
+    color: var(--text-secondary);
   }
   input[type='number'] {
     width: 52px;
