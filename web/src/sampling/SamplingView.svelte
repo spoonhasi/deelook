@@ -79,6 +79,47 @@
   })
 
   const machine = $derived(machines.find((m) => m.machine === machineId))
+
+  // the machines come from two lists, one shown at a time: the hub's and
+  // those added here by address. The list and the machine picked in each are
+  // kept in this browser.
+  type Source = 'hub' | 'local'
+  let source = $state<Source>('hub')
+  const hubMachines = $derived(machines.filter((m) => m.source !== 'local'))
+  const localMachines = $derived(machines.filter((m) => m.source === 'local'))
+  const shown = $derived(source === 'hub' ? hubMachines : localMachines)
+  const PICK_KEY = 'deelook.sampling.pick'
+  let picked: Record<Source, string> = { hub: '', local: '' }
+  function loadPick(): { source?: Source; hub?: string; local?: string } {
+    try {
+      return JSON.parse(localStorage.getItem(PICK_KEY) ?? '{}')
+    } catch {
+      return {}
+    }
+  }
+  function savePick() {
+    try {
+      localStorage.setItem(PICK_KEY, JSON.stringify({ source, ...picked }))
+    } catch {
+      // private window: remembered for this page only
+    }
+  }
+  /** Shows a list and the machine last picked in it (or its first). */
+  async function selectSource(src: Source) {
+    source = src
+    const list = src === 'hub' ? hubMachines : localMachines
+    const id = list.find((m) => m.machine === picked[src])?.machine ?? list[0]?.machine ?? ''
+    if (id) {
+      await selectMachine(id)
+    } else {
+      machineId = ''
+      viewing = null
+      sessions = []
+      live = { channels: [], events: [] }
+      shot = null
+      savePick()
+    }
+  }
   // machines that have not sampled since deelook started are not listed: idle
   const status = $derived<Status>(statuses.find((s) => s.machine === machineId) ?? { machine: machineId, state: 'idle' })
   const active = $derived(!!status && ['starting', 'waiting', 'running', 'stopping'].includes(status.state))
@@ -348,6 +389,12 @@
 
   async function selectMachine(id: string) {
     machineId = id
+    const m = machines.find((x) => x.machine === id)
+    if (m) {
+      source = m.source === 'local' ? 'local' : 'hub'
+      picked[source] = id
+      savePick()
+    }
     viewing = null
     live = { channels: [], events: [] }
     shot = null
@@ -369,7 +416,13 @@
       const [t] = await Promise.all([api.types(), loadMachines()])
       types = t
       statuses = await api.status().catch(() => [])
-      if (machines.length) await selectMachine(machines[0].machine)
+      const p = loadPick()
+      picked = { hub: p.hub ?? '', local: p.local ?? '' }
+      // the list used last time, unless it is empty and the other is not
+      let src: Source = p.source === 'local' ? 'local' : 'hub'
+      if (!(src === 'hub' ? hubMachines : localMachines).length && (src === 'hub' ? localMachines : hubMachines).length)
+        src = src === 'hub' ? 'local' : 'hub'
+      await selectSource(src)
     } catch (e) {
       message = String((e as Error).message)
     }
@@ -400,8 +453,10 @@
     })
   const deleteMachine = () =>
     manage(async () => {
-      await api.deleteMachine(machineId)
-      return machines.find((m) => m.machine !== machineId)?.machine
+      const gone = machineId
+      await api.deleteMachine(gone)
+      machines = machines.filter((m) => m.machine !== gone)
+      await selectSource('local') // the next machine added here, or none
     })
   const readNames = () =>
     manage(async () => {
@@ -616,11 +671,38 @@
           <br /><span class="hint">{hub.error}</span>
         </p>
       {/if}
+      <div class="row">
+        <span>목록</span>
+        <div class="seg" role="radiogroup" aria-label="기계 목록">
+          <label class:on={source === 'hub'}>
+            <input type="radio" name="machine-source" checked={source === 'hub'} onchange={() => selectSource('hub')} disabled={busy} />deemesh-hub
+            <small>{hubMachines.length}대</small>
+          </label>
+          <label class:on={source === 'local'}>
+            <input type="radio" name="machine-source" checked={source === 'local'} onchange={() => selectSource('local')} disabled={busy} />직접 추가
+            <small>{localMachines.length}대</small>
+          </label>
+        </div>
+        <HelpButton title="기계 목록: deemesh-hub와 직접 추가">
+          <ul>
+            <li><b>deemesh-hub</b>: 허브에 <code>nc_focas2_fanuc</code>로 등록된 기계 전부입니다(따로 고르지 않음). 허브에서 목록을
+              받을 때마다 저장해 두므로, 허브에 연결이 안 돼도 마지막으로 받은 목록으로 수집할 수 있습니다. 허브에서 빠진 기계는 다음에
+              목록을 받을 때 같이 빠집니다.</li>
+            <li><b>직접 추가</b>: 허브에 없는 FANUC 기계를 아래 "기계 관리"에서 이름·IP·FOCAS2 포트로 추가한 것입니다(번호
+              <code>L1</code>, <code>L2</code>…). 추가할 때 연결해서 축 이름을 읽으므로 기계가 켜져 있어야 합니다.</li>
+            <li>둘 다 <b>데이터 폴더의 <code>deelook.db</code></b>에 IP·포트와 함께 저장됩니다. 설정 파일 <code>deelook.toml</code>에는
+              들어가지 않고, 넘겨주는 세션 파일에도 IP·포트는 없습니다.</li>
+            <li>어느 목록이든 수집은 deelook이 CNC에 직접 FOCAS2로 연결해서 합니다. 허브는 기계 목록과 축 이름을 알려 줄 뿐입니다.</li>
+            <li>고른 목록과 목록마다 고른 기계는 이 브라우저에 기억됩니다.</li>
+          </ul>
+        </HelpButton>
+      </div>
       <label class="row">
         <span>기계</span>
-        <select value={machineId} onchange={(e) => selectMachine(e.currentTarget.value)} disabled={busy}>
-          {#each machines as m (m.machine)}
-            <option value={m.machine}>{m.name || '?'} ({m.source === 'local' ? '직접 추가' : `machine ${m.machine}`})</option>
+        <select value={machineId} onchange={(e) => selectMachine(e.currentTarget.value)} disabled={busy || !shown.length}>
+          {#if !shown.length}<option value="">{source === 'hub' ? '허브에 FANUC 기계 없음' : '직접 추가한 기계 없음'}</option>{/if}
+          {#each shown as m (m.machine)}
+            <option value={m.machine}>{m.name || '?'} ({source === 'local' ? m.machine : `machine ${m.machine}`})</option>
           {/each}
         </select>
       </label>
@@ -630,13 +712,17 @@
           {machine.note === 'axis names not known' ? '축 이름을 모릅니다' : machine.note} — 축은 번호로 고르거나, 아래 "축 이름을 CNC에서 읽기"를 누르세요.
         </p>
       {/if}
-      {#if loaded && !machines.length}
+      {#if loaded && !shown.length}
         <p class="warn">
-          수집할 기계가 없습니다. deemesh-hub의 <code>nc_focas2_fanuc</code> 기계가 모두 대상이고, 허브에 없는 기계는 아래 "기계 관리"에서
-          IP로 직접 추가할 수 있습니다.
+          {#if source === 'hub'}
+            deemesh-hub에서 받은 FANUC(<code>nc_focas2_fanuc</code>) 기계가 없습니다. 허브에 없는 기계는 "직접 추가"를 고르고 아래
+            "기계 관리"에서 IP로 추가하세요.
+          {:else}
+            직접 추가한 기계가 없습니다. 아래 "기계 관리"에서 이름·IP·FOCAS2 포트로 추가하세요.
+          {/if}
         </p>
       {/if}
-      <details class="manage" open={loaded && !machines.length}>
+      <details class="manage" open={loaded && source === 'local' && !localMachines.length}>
         <summary>기계 관리 <span class="hint">허브 없이 IP로 추가 · 축 이름 읽기</span></summary>
         <div class="row">
           <button onclick={readNames} disabled={manageBusy || active || !machineId || !libOk}>축 이름을 CNC에서 읽기</button>
