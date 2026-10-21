@@ -257,12 +257,38 @@ func (m *Machines) addLocal(name, host string, port int, axes, spindles []string
 		}
 	}
 	id := "L" + strconv.Itoa(n+1)
+	if name == "" {
+		name = id // never the address: names go into session files
+	}
 	m.data.Machines = append(m.data.Machines, machine{ID: id, Source: "local", Name: name, Host: host, Port: port,
 		Axes: axes, Spindles: spindles, Paths: paths})
 	if err := m.save(); err != nil {
 		return "", err
 	}
 	return id, m.store.setMeta("last_local_machine", strconv.Itoa(n+1))
+}
+
+// updateLocal changes a machine added in deelook.
+func (m *Machines) updateLocal(id string, change func(mc *machine)) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	i := slices.IndexFunc(m.data.Machines, func(mc machine) bool { return mc.ID == id && mc.Source == "local" })
+	if i < 0 {
+		return errors.New("no such machine added in deelook (the hub's machines change on the hub)")
+	}
+	change(&m.data.Machines[i])
+	return m.save()
+}
+
+// local is a machine added in deelook, as stored.
+func (m *Machines) local(id string) (machine, bool) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	i := slices.IndexFunc(m.data.Machines, func(mc machine) bool { return mc.ID == id && mc.Source == "local" })
+	if i < 0 {
+		return machine{}, false
+	}
+	return m.data.Machines[i], true
 }
 
 func (m *Machines) deleteLocal(id string) error {
@@ -368,9 +394,6 @@ func (m *Manager) AddMachine(name, host string, port int) (string, error) {
 	if host == "" || port <= 0 || port > 65535 {
 		return "", errors.New("give the CNC's IP address (or host name) and FOCAS2 port")
 	}
-	if name == "" {
-		name = host
-	}
 	axes, spindles, paths, err := m.readNames(target{ID: "new", Name: name, Host: host, Port: uint16(port)})
 	if err != nil {
 		return "", fmt.Errorf("the address does not answer as a FOCAS2 CNC: %w", err)
@@ -383,6 +406,51 @@ func (m *Manager) AddMachine(name, host string, port int) (string, error) {
 }
 
 // DeleteMachine removes a machine added in deelook (not one of the hub's).
+// UpdateMachine renames a machine added in deelook and, given a host or
+// port, moves it to that address (an empty host or a 0 port keeps the one
+// it has). A new address must answer as a FOCAS2 CNC: its axis names are
+// read again, as when adding. Addresses only go in, never back out.
+func (m *Manager) UpdateMachine(id, name, host string, port int) error {
+	name, host = strings.TrimSpace(name), strings.TrimSpace(host)
+	cur, ok := m.list.local(id)
+	if !ok {
+		return errors.New("no such machine added in deelook (the hub's machines change on the hub)")
+	}
+	if port < 0 || port > 65535 {
+		return errors.New("the FOCAS2 port is 1 to 65535")
+	}
+	if host == "" {
+		host = cur.Host
+	}
+	if port == 0 {
+		port = cur.Port
+	}
+	moved := host != cur.Host || port != cur.Port
+	var axes, spindles []string
+	var paths int
+	if moved {
+		m.mu.Lock()
+		r := m.runs[id]
+		m.mu.Unlock()
+		if r != nil && r.active() {
+			return errors.New("the machine is sampling: stop it before changing its address")
+		}
+		var err error
+		axes, spindles, paths, err = m.readNames(target{ID: id, Name: cur.Name, Host: host, Port: uint16(port)})
+		if err != nil {
+			return fmt.Errorf("the new address does not answer as a FOCAS2 CNC: %w", err)
+		}
+	}
+	return m.list.updateLocal(id, func(mc *machine) {
+		if name != "" {
+			mc.Name = name
+		}
+		if moved {
+			mc.Host, mc.Port, mc.Axes, mc.Spindles, mc.Paths = host, port, axes, spindles, paths
+		}
+	})
+}
+
 func (m *Manager) DeleteMachine(id string) error {
 	m.mu.Lock()
 	r := m.runs[id]

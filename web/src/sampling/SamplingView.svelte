@@ -29,6 +29,7 @@
   import SessionViewer from './SessionViewer.svelte'
   import Reference from './Reference.svelte'
   import HelpButton from '../lib/HelpButton.svelte'
+  import Modal from '../lib/Modal.svelte'
   import { explainError, PMC_KINDS } from './reference'
   import { trgText } from './trigger'
 
@@ -428,36 +429,64 @@
     }
   })
 
-  // machines added here by address, and axis names read over FOCAS2
+  // machines added here by address (the add and change dialogs), and axis
+  // names read over FOCAS2. Addresses go to the server and never come back:
+  // the change dialog takes a new one, it cannot show the current one.
   let adding = $state({ name: '', host: '', port: 8193 })
+  let editing = $state<{ name: string; host: string; port: number | null }>({ name: '', host: '', port: null })
+  let addOpen = $state(false)
+  let editOpen = $state(false)
   let manageBusy = $state(false)
   let manageMsg = $state('')
-  async function manage(what: () => Promise<string | void>) {
+  /** Runs a machine change and reloads the list; false when it failed (manageMsg says why). */
+  async function manage(what: () => Promise<string | void>): Promise<boolean> {
     manageBusy = true
     manageMsg = ''
     try {
       const id = await what()
       await loadMachines()
       if (id) await selectMachine(id)
+      return true
     } catch (e) {
       manageMsg = String((e as Error).message)
+      return false
     } finally {
       manageBusy = false
     }
   }
-  const addMachine = () =>
-    manage(async () => {
-      const r = await api.addMachine(adding.name, adding.host, Number(adding.port))
-      adding = { name: '', host: '', port: 8193 }
-      return r.machine
+  function openAdd() {
+    adding = { name: '', host: '', port: 8193 }
+    manageMsg = ''
+    addOpen = true
+  }
+  function openEdit() {
+    editing = { name: machine?.name ?? '', host: '', port: null }
+    manageMsg = ''
+    editOpen = true
+  }
+  async function addMachine() {
+    const ok = await manage(async () => (await api.addMachine(adding.name, adding.host, Number(adding.port))).machine)
+    if (ok) addOpen = false
+  }
+  async function saveMachine() {
+    const id = machineId
+    const ok = await manage(async () => {
+      await api.updateMachine(id, editing.name, editing.host, Number(editing.port) || 0)
+      return id
     })
-  const deleteMachine = () =>
-    manage(async () => {
-      const gone = machineId
+    if (ok) editOpen = false
+  }
+  async function deleteMachine() {
+    if (!machine || !confirm(`${machine.name} (${machine.machine})을(를) 목록에서 지울까요?\n이 기계로 기록한 세션 파일은 지워지지 않습니다.`))
+      return
+    const gone = machineId
+    const ok = await manage(async () => {
       await api.deleteMachine(gone)
       machines = machines.filter((m) => m.machine !== gone)
       await selectSource('local') // the next machine added here, or none
     })
+    if (ok) editOpen = false
+  }
   const readNames = () =>
     manage(async () => {
       await api.readNames(machineId)
@@ -688,7 +717,7 @@
             <li><b>deemesh-hub</b>: 허브에 <code>nc_focas2_fanuc</code>로 등록된 기계 전부입니다(따로 고르지 않음). 허브에서 목록을
               받을 때마다 저장해 두므로, 허브에 연결이 안 돼도 마지막으로 받은 목록으로 수집할 수 있습니다. 허브에서 빠진 기계는 다음에
               목록을 받을 때 같이 빠집니다.</li>
-            <li><b>직접 추가</b>: 허브에 없는 FANUC 기계를 아래 "기계 관리"에서 이름·IP·FOCAS2 포트로 추가한 것입니다(번호
+            <li><b>직접 추가</b>: 허브에 없는 FANUC 기계를 기계 옆 "추가"에서 이름·IP·FOCAS2 포트로 넣은 것입니다(번호
               <code>L1</code>, <code>L2</code>…). 추가할 때 연결해서 축 이름을 읽으므로 기계가 켜져 있어야 합니다.</li>
             <li>둘 다 <b>데이터 폴더의 <code>deelook.db</code></b>에 IP·포트와 함께 저장됩니다. 설정 파일 <code>deelook.toml</code>에는
               들어가지 않고, 넘겨주는 세션 파일에도 IP·포트는 없습니다.</li>
@@ -697,52 +726,95 @@
           </ul>
         </HelpButton>
       </div>
-      <label class="row">
+      <div class="row">
         <span>기계</span>
-        <select value={machineId} onchange={(e) => selectMachine(e.currentTarget.value)} disabled={busy || !shown.length}>
+        <select class="machine" value={machineId} onchange={(e) => selectMachine(e.currentTarget.value)} disabled={busy || !shown.length} aria-label="기계">
           {#if !shown.length}<option value="">{source === 'hub' ? '허브에 FANUC 기계 없음' : '직접 추가한 기계 없음'}</option>{/if}
           {#each shown as m (m.machine)}
             <option value={m.machine}>{m.name || '?'} ({source === 'local' ? m.machine : `machine ${m.machine}`})</option>
           {/each}
         </select>
-      </label>
+        <button type="button" onclick={openAdd} disabled={busy} title="허브에 없는 FANUC 기계를 IP로 추가">추가</button>
+        <button type="button" onclick={openEdit} disabled={busy || !machine}
+          title={machine?.source === 'local' ? '이름·주소 바꾸기, 축 이름 읽기, 지우기' : '축 이름 읽기 (허브 기계의 이름·주소는 허브에서)'}>변경</button>
+      </div>
       {#if machine?.error}<p class="error">{machine.error}</p>{/if}
       {#if machine?.note}
         <p class="hint">
-          {machine.note === 'axis names not known' ? '축 이름을 모릅니다' : machine.note} — 축은 번호로 고르거나, 아래 "축 이름을 CNC에서 읽기"를 누르세요.
+          {machine.note === 'axis names not known' ? '축 이름을 모릅니다' : machine.note} — 축은 번호로 고르거나, "변경"에서 "축 이름을 CNC에서 읽기"를 누르세요.
         </p>
       {/if}
       {#if loaded && !shown.length}
         <p class="warn">
           {#if source === 'hub'}
-            deemesh-hub에서 받은 FANUC(<code>nc_focas2_fanuc</code>) 기계가 없습니다. 허브에 없는 기계는 "직접 추가"를 고르고 아래
-            "기계 관리"에서 IP로 추가하세요.
+            deemesh-hub에서 받은 FANUC(<code>nc_focas2_fanuc</code>) 기계가 없습니다. 허브에 없는 기계는 기계 옆 "추가"로 IP를 넣어
+            추가하세요.
           {:else}
-            직접 추가한 기계가 없습니다. 아래 "기계 관리"에서 이름·IP·FOCAS2 포트로 추가하세요.
+            직접 추가한 기계가 없습니다. 기계 옆 "추가"로 이름·IP·FOCAS2 포트를 넣어 추가하세요.
           {/if}
         </p>
       {/if}
-      <details class="manage" open={loaded && source === 'local' && !localMachines.length}>
-        <summary>기계 관리 <span class="hint">허브 없이 IP로 추가 · 축 이름 읽기</span></summary>
-        <div class="row">
-          <button onclick={readNames} disabled={manageBusy || active || !machineId || !libOk}>축 이름을 CNC에서 읽기</button>
-          {#if machine?.source === 'local'}
-            <button class="danger" onclick={deleteMachine} disabled={manageBusy || active}>이 기계 지우기</button>
-          {/if}
-          <span class="hint">FOCAS2 cnc_rdaxisname·cnc_rdspdlname으로 직접 읽어 저장</span>
-        </div>
-        <div class="row">
-          <input type="text" bind:value={adding.name} placeholder="이름" aria-label="새 기계 이름" class="mname" />
-          <input type="text" bind:value={adding.host} placeholder="IP 주소" aria-label="새 기계 IP 주소" class="mhost" />
-          <input type="number" bind:value={adding.port} min="1" max="65535" aria-label="FOCAS2 포트" class="wide" />
-          <button onclick={addMachine} disabled={manageBusy || !adding.host.trim() || !libOk}>추가</button>
+      <Modal title="기계 직접 추가" bind:open={addOpen}>
+        <div class="mform">
+          <label><span>이름</span><input type="text" bind:value={adding.name} placeholder="비우면 L1 같은 번호" /></label>
+          <label><span>IP 주소</span><input type="text" bind:value={adding.host} placeholder="예: 192.0.2.10" /></label>
+          <label><span>FOCAS2 포트</span><input type="number" min="1" max="65535" bind:value={adding.port} /></label>
         </div>
         <p class="hint">
-          허브에 없는 Fanuc 기계를 IP와 FOCAS2 포트(보통 8193)로 추가합니다. 추가할 때 연결해서 축 이름을 읽으므로 기계가 켜져 있어야 합니다.
-          허브 기계 목록은 받을 때마다 저장되어, 허브가 꺼져도 그 기계들로 계속 수집할 수 있습니다.
+          허브에 없는 FANUC 기계를 넣습니다. 추가할 때 그 주소로 연결해서 축 이름을 읽으므로 CNC가 켜져 있어야 합니다. 이름은 화면과
+          세션 파일 이름에 쓰이니 IP를 넣지 마세요. IP·포트는 데이터 폴더의 <code>deelook.db</code>에만 저장되고 화면에는 다시 나오지
+          않습니다.
         </p>
         {#if manageMsg}{@render err(manageMsg)}{/if}
-      </details>
+        <div class="actions">
+          <button class="primary" onclick={addMachine} disabled={manageBusy || !adding.host.trim() || !libOk}>{manageBusy ? '연결하는 중…' : '추가'}</button>
+          <button onclick={() => (addOpen = false)}>취소</button>
+        </div>
+      </Modal>
+
+      <Modal title={machine ? `${machine.name} (${machine.source === 'local' ? machine.machine : `machine ${machine.machine}`})` : '기계'}
+        bind:open={editOpen}>
+        {#if machine?.source === 'local'}
+          <div class="mform">
+            <label><span>이름</span><input type="text" bind:value={editing.name} /></label>
+            <label><span>새 IP 주소</span><input type="text" bind:value={editing.host} placeholder="그대로" /></label>
+            <label><span>새 FOCAS2 포트</span><input type="number" min="1" max="65535" bind:value={editing.port} placeholder="그대로" /></label>
+          </div>
+          <p class="hint">
+            지금 IP·포트는 보이지 않습니다(deelook은 기계 주소를 브라우저에 내보내지 않음). 바꿀 때만 새로 넣으세요. 주소를 바꾸면 그
+            주소로 연결해서 축 이름을 다시 읽습니다. 이름만 바꾸면 연결하지 않습니다.
+          </p>
+          <div class="actions">
+            <button class="primary" onclick={saveMachine}
+              disabled={manageBusy || (!editing.name.trim() && !editing.host.trim() && !editing.port) || (!!editing.host.trim() && !libOk)}>
+              {manageBusy ? '저장하는 중…' : '저장'}</button>
+            <button onclick={() => (editOpen = false)}>닫기</button>
+          </div>
+        {:else if machine}
+          <p class="hint">
+            deemesh-hub의 기계입니다. 이름과 주소는 허브에서 정하니, 바꾸려면 허브의 기계 설정에서 바꾸세요. 허브가 답하면 축 이름도
+            허브에서 받습니다.
+          </p>
+        {/if}
+        {#if machine}
+          <h4>축 이름</h4>
+          <p class="hint">
+            {machine.axes.length ? `서보: ${machine.axes.join(' ')}` : '서보: 모름'}
+            {machine.spindles.length ? ` · 주축: ${machine.spindles.join(' ')}` : ''}{machine.paths ? ` · 계통 ${machine.paths}개` : ''}
+          </p>
+          <div class="row">
+            <button onclick={readNames} disabled={manageBusy || active || !libOk}>축 이름을 CNC에서 읽기</button>
+            <span class="hint">FOCAS2 cnc_rdaxisname·cnc_rdspdlname으로 직접 읽어 저장</span>
+          </div>
+          {#if machine.source === 'local'}
+            <div class="row">
+              <button class="danger" onclick={deleteMachine} disabled={manageBusy || active}>이 기계 지우기</button>
+              <span class="hint">목록에서만 지웁니다. 세션 파일은 남습니다.</span>
+            </div>
+          {/if}
+          {#if manageMsg && editOpen}{@render err(manageMsg)}{/if}
+        {/if}
+      </Modal>
 
       <div class="row">
         <span>방식</span>
@@ -1362,20 +1434,30 @@
     font-size: 13px;
     white-space: pre-wrap;
   }
-  details.manage {
-    margin: 0 0 10px;
-    font-size: 13px;
+  /* the machine menu gives way, so add and change stay on its right */
+  select.machine {
+    flex: 1 1 0;
+    min-width: 5em;
+    max-width: 360px;
   }
-  details.manage summary {
-    cursor: pointer;
-    color: var(--text-secondary);
-    margin-bottom: 6px;
+  .mform {
+    display: grid;
+    gap: 8px;
   }
-  input.mname {
-    width: 110px;
+  .mform label {
+    display: grid;
+    grid-template-columns: 110px minmax(0, 1fr);
+    align-items: center;
+    gap: 8px;
   }
-  input.mhost {
-    width: 130px;
+  .mform input {
+    width: 100%;
+    box-sizing: border-box;
+  }
+  h4 {
+    margin: 14px 0 4px;
+    font-size: 14px;
+    color: var(--text-primary);
   }
   .nolib {
     border: 1px solid #9a6700;

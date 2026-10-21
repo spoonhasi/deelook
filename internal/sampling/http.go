@@ -21,6 +21,8 @@ import (
 //	GET  /api/sampling/machines              machines that can sample (the hub's Fanuc ones, stored
 //	                                         for when the hub is down, and those added here), with axes
 //	POST /api/sampling/machines              add a machine by address, body: {name, host, port}
+//	PATCH /api/sampling/machines/{machine}   change a machine added here, body: {name, host, port}
+//	                                         (empty or 0: as it is)
 //	DELETE /api/sampling/machines/{machine}  remove a machine added here
 //	POST /api/sampling/machines/{machine}/names  read its axis names over FOCAS2
 //	GET  /api/sampling/status                state of the machines that sampled
@@ -59,6 +61,25 @@ func (m *Manager) Routes(mux *http.ServeMux) {
 			return
 		}
 		writeJSON(w, map[string]string{"machine": id})
+	})
+	mux.HandleFunc("PATCH /api/sampling/machines/{machine}", func(w http.ResponseWriter, r *http.Request) {
+		if !jsonRequest(w, r) {
+			return
+		}
+		var req struct {
+			Name string `json:"name"`
+			Host string `json:"host"`
+			Port int    `json:"port"`
+		}
+		if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<12)).Decode(&req); err != nil {
+			http.Error(w, "bad request body: "+err.Error(), http.StatusBadRequest)
+			return
+		}
+		if err := m.UpdateMachine(r.PathValue("machine"), req.Name, req.Host, req.Port); err != nil {
+			http.Error(w, err.Error(), http.StatusConflict)
+			return
+		}
+		writeJSON(w, map[string]bool{"ok": true})
 	})
 	mux.HandleFunc("DELETE /api/sampling/machines/{machine}", func(w http.ResponseWriter, r *http.Request) {
 		if err := m.DeleteMachine(r.PathValue("machine")); err != nil {

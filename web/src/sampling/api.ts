@@ -203,6 +203,9 @@ export const api = {
   machines: () => get<{ library?: Library; hub: HubState; machines: MachineInfo[] }>('/api/sampling/machines'),
   addMachine: (name: string, host: string, port: number) =>
     post<{ machine: string }>('/api/sampling/machines', { name, host, port }),
+  /** Renames a machine added here; a host or port (empty, 0: as it is) moves it there. */
+  updateMachine: (id: string, name: string, host: string, port: number) =>
+    post<{ ok: boolean }>(`/api/sampling/machines/${encodeURIComponent(id)}`, { name, host, port }, 'PATCH'),
   deleteMachine: (id: string) => post<{ ok: boolean }>(`/api/sampling/machines/${encodeURIComponent(id)}`, {}, 'DELETE'),
   readNames: (id: string) => post<{ ok: boolean }>(`/api/sampling/machines/${encodeURIComponent(id)}/names`),
   status: () => get<Status[]>('/api/sampling/status'),

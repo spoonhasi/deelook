@@ -37,7 +37,7 @@ _실행 중인 deelook의 `/help`에서는 여기에 허브 연결, FOCAS2 라�
 
 ## 시계열 수집 (`/sampling`)
 
-- **대상**: deemesh-hub의 `nc_focas2_fanuc` 기계 전부와, 화면의 "기계 관리"에서 IP로 직접 추가한 기계. 화면 위쪽 "목록"에서
+- **대상**: deemesh-hub의 `nc_focas2_fanuc` 기계 전부와, 기계 옆 "추가"에서 IP로 직접 추가한 기계("변경"에서 이름·주소 바꾸기, 지우기). 화면 위쪽 "목록"에서
   deemesh-hub와 직접 추가 중 하나를 고르면 그 목록의 기계만 나옵니다. 허브에 연결이 안 되면 마지막으로 받은 목록으로
   수집합니다(수집은 deelook이 CNC에 직접 연결). 두 목록 모두 데이터 폴더의 `deelook.db`에 저장됩니다(설정 파일에는 없음).
 - **필요한 것**: FANUC의 FOCAS2 라이브러리. deelook에 들어 있지 않습니다. Windows는 `Fwlib64.dll`과 `fwlibe64.dll`,
@@ -100,6 +100,7 @@ _실행 중인 deelook의 `/help`에서는 여기에 허브 연결, FOCAS2 라�
 | `GET /api/sampling/types` | 데이터 종류 표(서보, 주축, CNC 정보)와 PMC 주소 종류 |
 | `GET /api/sampling/machines` | 수집할 수 있는 기계와 축 이름, 허브 연결 상태, FOCAS2 라이브러리 |
 | `POST /api/sampling/machines` | 기계를 IP로 추가: `{"name", "host", "port"}` (CNC에 연결해 축 이름을 읽음) |
+| `PATCH /api/sampling/machines/{machine}` | 직접 추가한 기계 바꾸기: `{"name", "host", "port"}` (빈 값·0은 그대로, 새 주소면 연결해서 축 이름을 다시 읽음) |
 | `DELETE /api/sampling/machines/{machine}` | 직접 추가한 기계 지우기 |
 | `POST /api/sampling/machines/{machine}/names` | 축 이름을 CNC에서 다시 읽기 |
 | `GET /api/sampling/status` | 수집한 적이 있는 기계의 상태(읽기 통계, 책갈피, FOCAS2 호출 기록) |

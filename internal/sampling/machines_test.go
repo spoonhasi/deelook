@@ -174,3 +174,54 @@ func TestMachinesFromJSON(t *testing.T) {
 		t.Errorf("next local machine %q", id)
 	}
 }
+
+// A machine added in deelook can be renamed without reaching it; an empty
+// name is its number, never its address; the hub's machines are not
+// changed here.
+func TestMachinesRename(t *testing.T) {
+	st, err := OpenStore(t.TempDir(), "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	ms, err := OpenMachines(st)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := ms.syncHub([]hub.Machine{{ID: 2, Name: "bench", Protocol: fanucProtocol, Host: "10.0.0.2", Port: 8193}}, time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	id, err := ms.addLocal("", "10.0.0.9", 8193, []string{"X"}, nil, 1, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	m := NewManager(hub.New("http://127.0.0.1:1", time.Second), st, ms, nil, "", nil)
+	if mc, _ := ms.local(id); mc.Name != id {
+		t.Fatalf("empty name stored as %q, want %q", mc.Name, id)
+	}
+	if err := m.UpdateMachine(id, " lathe 3 ", "", 0); err != nil {
+		t.Fatal(err)
+	}
+	if mc, _ := ms.local(id); mc.Name != "lathe 3" || mc.Host != "10.0.0.9" || mc.Port != 8193 || !slices.Equal(mc.Axes, []string{"X"}) {
+		t.Errorf("after rename: %+v", mc)
+	}
+	if err := m.UpdateMachine(id, "", "", 0); err != nil { // nothing to change
+		t.Fatal(err)
+	}
+	if mc, _ := ms.local(id); mc.Name != "lathe 3" {
+		t.Errorf("an empty name changed it to %q", mc.Name)
+	}
+	if err := m.UpdateMachine("2", "mine", "", 0); err == nil {
+		t.Error("renamed a hub machine")
+	}
+	if err := m.UpdateMachine(id, "", "", 70000); err == nil {
+		t.Error("took port 70000")
+	}
+	// a new address has to answer: without a FOCAS2 library it cannot
+	if err := m.UpdateMachine(id, "", "10.0.0.10", 0); err == nil {
+		t.Error("moved to an address nobody checked")
+	}
+	if mc, _ := ms.local(id); mc.Host != "10.0.0.9" {
+		t.Errorf("a refused move changed the address to %q", mc.Host)
+	}
+}
