@@ -21,6 +21,7 @@ import (
 // Routes registers the sampling API.
 //
 //	GET  /api/sampling/types                 data types per channel kind
+//	POST /api/sampling/library               a FOCAS2 library file, raw, when none is loaded (library.go)
 //	GET  /api/sampling/machines              machines that can sample (the hub's Fanuc ones, stored
 //	                                         for when the hub is down, and those added here), with axes
 //	POST /api/sampling/machines              add a machine by address, body: {name, host, port}
@@ -52,6 +53,7 @@ func (m *Manager) Routes(mux *http.ServeMux) {
 			"pmcKinds": focas.PmcKinds})
 	})
 	mux.HandleFunc("GET /api/sampling/machines", m.handleMachines)
+	mux.HandleFunc("POST /api/sampling/library", m.handleLibrary)
 	mux.HandleFunc("POST /api/sampling/machines", func(w http.ResponseWriter, r *http.Request) {
 		if !jsonRequest(w, r) {
 			return
@@ -440,12 +442,19 @@ func (m *Manager) handleMachines(w http.ResponseWriter, r *http.Request) {
 // libraryInfo tells the browser about the FOCAS2 library: loaded (path,
 // version, whether it has the cnc_sdt*2 calls), or not and why.
 func (m *Manager) libraryInfo() map[string]any {
-	if m.lib == nil {
-		return map[string]any{"available": false, "path": m.libPath, "error": m.libErr.Error(),
-			"windows": runtime.GOOS == "windows"}
+	l := m.library()
+	if l.lib == nil {
+		info := map[string]any{"available": false, "path": l.path, "windows": runtime.GOOS == "windows"}
+		if l.err != nil {
+			info["error"] = l.err.Error()
+		}
+		if need := neededLibs[platform]; len(need) > 0 { // the page may upload these (library.go)
+			info["uploadable"], info["needs"] = true, need
+		}
+		return info
 	}
-	return map[string]any{"available": true, "path": m.lib.Path, "version": m.lib.Version,
-		"extended": m.lib.Extended(), "windows": runtime.GOOS == "windows"}
+	return map[string]any{"available": true, "path": l.lib.Path, "version": l.lib.Version,
+		"extended": l.lib.Extended(), "windows": runtime.GOOS == "windows"}
 }
 
 // axes reads axis and spindle names through deemesh. FOCAS numbers them

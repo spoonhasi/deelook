@@ -267,13 +267,14 @@ bin/deelook-windows-amd64/deelook.exe -hub http://127.0.0.1:8080 -machine 2 -lam
 
 | 옵션 | 기본값 | 설명 |
 |---|---|---|
+| `-config` | 실행 파일 옆 `deelook.toml` | 설정 파일 (명령줄에서만). 안의 상대 경로는 그 파일의 폴더 기준. 예: `deelook -config /etc/deelook/deelook.toml` |
 | `-listen` | `:8090` | 웹 서버 주소 |
 | `-hub` | `http://127.0.0.1:8080` | deemesh-hub 주소. `""`이면 deemesh 없이(HMI 화면 없음, 시계열 수집은 직접 추가한 기계로). 페이지 오른쪽 위에서 바꾸거나 지우면 바로 적용되고 `deelook.toml`에도 써짐 |
 | `-machine` | (없음) | 주소에 machine이 없을 때 HMI 화면에 보여 줄 기계: machine_id 또는 이름. 없으면 허브 목록에서 번호가 가장 작은 FANUC 기계 |
 | `-interval` | `1s` | 한 화면을 읽는 간격 |
 | `-timeout` | `5s` | 한 번 읽을 때 허브 쪽 제한 시간 |
 | `-lamps` | (없음) | PMC로 램프를 읽을 기계: `1=ncguide,13=ncguide` (`deelook.toml`에서는 `[lamps]` 표) |
-| `-fwlib` | 실행 파일 옆 `Fwlib64.dll` / `libfwlib32.so*` | FOCAS2 라이브러리 파일 (실행 파일과 같은 비트) |
+| `-fwlib` | 실행 파일 옆 `Fwlib64.dll` / `libfwlib32.so*`, 없으면 데이터 폴더의 `fwlib\` | FOCAS2 라이브러리 파일 (실행 파일과 같은 비트). 없을 때는 화면에서 올릴 수도 있음(시험한 판만) |
 | `-data` | 실행 파일 옆 `deelook-data` | 데이터 폴더: `sessions\`(수집 한 건마다 SQLite 파일), `deelook.db`(목록·기계) |
 | `-minfree` | `1GB` | 데이터 폴더 디스크의 남은 공간이 이보다 적으면 수집을 시작하지 않거나 멈춤 (`0`: 보지 않음) |
 | `-open` | 더블클릭으로 실행했을 때만 | 시작하면 브라우저로 도움말(`/`) 열기 |

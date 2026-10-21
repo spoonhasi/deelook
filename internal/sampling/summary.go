@@ -35,11 +35,12 @@ func (m *Manager) Summary(ms []hub.Machine, hubErr error) Summary {
 			log.Printf("machine list in %s: %v", indexName, err)
 		}
 	}
-	s := Summary{LibPath: m.libPath, Storage: m.store.Storage()}
-	if m.lib != nil {
-		s.Library, s.LibPath, s.LibVersion, s.Extended = true, m.lib.Path, m.lib.Version, m.lib.Extended()
-	} else if m.libErr != nil {
-		s.LibError = m.libErr.Error()
+	l := m.library()
+	s := Summary{LibPath: l.path, Storage: m.store.Storage()}
+	if l.lib != nil {
+		s.Library, s.LibPath, s.LibVersion, s.Extended = true, l.lib.Path, l.lib.Version, l.lib.Extended()
+	} else if l.err != nil {
+		s.LibError = l.err.Error()
 	}
 	for _, mc := range m.list.list() {
 		s.Machines = append(s.Machines, SummaryMachine{mc.ID, mc.Name, mc.Source, mc.Axes, mc.Spindles})

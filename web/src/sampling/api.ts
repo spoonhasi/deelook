@@ -63,6 +63,17 @@ export interface Library {
   extended?: boolean // has cnc_sdt*2
   error?: string
   windows: boolean // the server runs on Windows
+  uploadable?: boolean // none loaded: the page may upload these files (needs)
+  needs?: string[]
+}
+
+/** What an uploaded library file did. */
+export interface LibraryUpload {
+  file: string
+  version: string
+  missing?: string[] // still to upload before it loads
+  error?: string // complete, but it did not load
+  library: Library
 }
 
 export interface MachineInfo {
@@ -262,6 +273,16 @@ export const api = {
   oneshot: (id: string, servoPeriodUs: number, channels: ChannelConfig[]) =>
     post<OneShotResult>(`${m(id)}/oneshot`, { servoPeriodUs, channels }),
   live: (id: string) => get<Live>(`${m(id)}/live?window=3s&buckets=600`),
+  /** Uploads one FOCAS2 library file (only the FANUC files deelook knows are taken). */
+  uploadLibrary: async (file: File): Promise<LibraryUpload> => {
+    const r = await fetch('/api/sampling/library', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/octet-stream' },
+      body: file,
+    })
+    if (!r.ok) throw new Error((await r.text()).trim() || `HTTP ${r.status}`)
+    return (await r.json()) as LibraryUpload
+  },
   sessions: (id: string) => get<SessionInfo[]>(`/api/sampling/sessions?machine=${encodeURIComponent(id)}&limit=50`),
   sessionList: (q: SessionQuery) => get<SessionInfo[]>(`/api/sampling/sessions?${sessionQuery(q)}`),
   /** Per day, newest first, in this browser's time zone. */

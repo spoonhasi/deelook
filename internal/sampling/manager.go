@@ -7,6 +7,7 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"deelook/internal/focas"
@@ -16,12 +17,11 @@ import (
 // Manager runs at most one sampling session per machine: any Fanuc machine
 // on the hub's list, or added in deelook (machines.go).
 type Manager struct {
-	hub     *hub.Client
-	store   *Store
-	list    *Machines  // the machines that can sample (machines.go)
-	lib     *focas.Lib // nil: no FOCAS2 library, no sampling
-	libPath string     // where the library was looked for
-	libErr  error      // why there is none
+	hub   *hub.Client
+	store *Store
+	list  *Machines // the machines that can sample (machines.go)
+	libs  atomic.Pointer[libState]
+	libMu sync.Mutex // one library upload at a time (library.go)
 
 	mu   sync.Mutex
 	runs map[string]*run // latest run per machine, finished ones included
@@ -35,19 +35,31 @@ const fanucProtocol = "nc_focas2_fanuc"
 
 // lib is nil when deelook found no usable FOCAS2 library (libErr says why,
 // libPath is where it looked): then the machine list, recorded sessions and
-// the reference still work, and every call that needs the CNC says so.
+// the reference still work, and every call that needs the CNC says so,
+// until one is uploaded (library.go).
 func NewManager(c *hub.Client, store *Store, list *Machines, lib *focas.Lib, libPath string, libErr error) *Manager {
-	return &Manager{hub: c, store: store, list: list, lib: lib, libPath: libPath, libErr: libErr,
-		runs: map[string]*run{}, busy: map[string]bool{}}
+	m := &Manager{hub: c, store: store, list: list, runs: map[string]*run{}, busy: map[string]bool{}}
+	m.libs.Store(&libState{lib: lib, path: libPath, err: libErr})
+	return m
 }
 
-// needLib is the error of a call that needs the FOCAS2 library when there
-// is none.
-func (m *Manager) needLib() error {
-	if m.lib == nil {
-		return fmt.Errorf("no FOCAS2 library, so no sampling: %v", m.libErr)
+// libState is the FOCAS2 library deelook uses: loaded at start, or later
+// from an upload when there was none.
+type libState struct {
+	lib  *focas.Lib // nil: none, no sampling
+	path string     // the library, or where it was looked for
+	err  error      // why there is none
+}
+
+func (m *Manager) library() libState { return *m.libs.Load() }
+
+// needLib is the library for a call that needs the CNC, or why there is none.
+func (m *Manager) needLib() (*focas.Lib, error) {
+	l := m.library()
+	if l.lib == nil {
+		return nil, fmt.Errorf("no FOCAS2 library, so no sampling: %v", l.err)
 	}
-	return nil
+	return l.lib, nil
 }
 
 // Start starts a session and returns once sampling runs on the CNC (or
@@ -56,14 +68,15 @@ func (m *Manager) Start(ctx context.Context, id string, cfg Config) (Status, err
 	if err := cfg.Validate(); err != nil {
 		return Status{}, err
 	}
-	if err := m.needLib(); err != nil {
+	lib, err := m.needLib()
+	if err != nil {
 		return Status{}, err
 	}
 	if err := m.store.lowDisk(); err != nil {
 		return Status{}, err
 	}
-	if cfg.extended() && !m.lib.Extended() {
-		return Status{}, fmt.Errorf("%s has no cnc_sdt*2 calls (extended sampling)", m.lib.Path)
+	if cfg.extended() && !lib.Extended() {
+		return Status{}, fmt.Errorf("%s has no cnc_sdt*2 calls (extended sampling)", lib.Path)
 	}
 	t, err := m.target(ctx, id)
 	if err != nil {
@@ -75,7 +88,7 @@ func (m *Manager) Start(ctx context.Context, id string, cfg Config) (Status, err
 		m.mu.Unlock()
 		return Status{}, err
 	}
-	r := newRun(m.lib, m.store, t, cfg)
+	r := newRun(lib, m.store, t, cfg)
 	m.runs[id] = r
 	m.mu.Unlock()
 
@@ -299,7 +312,8 @@ func (m *Manager) ReadOnce(ctx context.Context, id string, req OneShot) (OneShot
 	if err := cfg.Validate(); err != nil {
 		return OneShotResult{}, err
 	}
-	if err := m.needLib(); err != nil {
+	lib, err := m.needLib()
+	if err != nil {
 		return OneShotResult{}, err
 	}
 	t, err := m.target(ctx, id)
@@ -312,7 +326,7 @@ func (m *Manager) ReadOnce(ctx context.Context, id string, req OneShot) (OneShot
 	ferr := m.onHost(id, t.Host, func() {
 		var h *focas.Handle
 		err = r.call("cnc_allclibhndl3", func() (err error) {
-			h, err = m.lib.Connect(t.Host, t.Port, 10*time.Second)
+			h, err = lib.Connect(t.Host, t.Port, 10*time.Second)
 			return err
 		})
 		if err != nil {

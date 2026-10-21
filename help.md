@@ -42,6 +42,8 @@ _실행 중인 deelook의 `/help`에서는 여기에 허브 연결, FOCAS2 라�
   수집합니다(수집은 deelook이 CNC에 직접 연결). 두 목록 모두 데이터 폴더의 `deelook.db`에 저장됩니다(설정 파일에는 없음).
 - **필요한 것**: FANUC의 FOCAS2 라이브러리. deelook에 들어 있지 않습니다. Windows는 `Fwlib64.dll`과 `fwlibe64.dll`,
   Linux는 32비트 `libfwlib32.so`를 실행 파일 옆에 두거나 설정 `fwlib`로 지정합니다. 없으면 HMI 화면만 됩니다.
+  라이브러리가 없을 때는 시계열 수집 화면에서 **파일 올리기**로 넣을 수도 있습니다. deelook이 시험한 FANUC 판(SHA-256이 맞는
+  파일)만 받고, 다 올리면 다시 시작하지 않아도 바로 불러옵니다(데이터 폴더의 `fwlib`에 저장). 다른 판은 직접 넣으면 됩니다.
 - **방식**
   - 기본(`cnc_sdtsetchnl`…): 서보 데이터 0~46번·주축 0~21번, 종료할 때까지 또는 정한 점 수, 즉시 또는 블록 N이 실행될 때부터.
   - 확장(`cnc_sdtsetchnl2`…, Windows만): 위에 더해 PMC 신호, O·N 번호. 늘 즉시 시작하고, 블록 N이 실행되거나 PMC 신호가
@@ -55,8 +57,9 @@ _실행 중인 deelook의 `/help`에서는 여기에 허브 연결, FOCAS2 라�
 
 ## 설정 (`deelook.toml`)
 
-실행 파일 옆의 `deelook.toml`입니다. 없으면 처음 실행할 때 지금 쓰이는 기본값으로 만들어집니다. 이름은 명령줄 옵션
-(`deelook -h`)과 같고, 명령줄로 준 값이 우선합니다. 바꾼 뒤 deelook을 다시 시작해야 적용됩니다.
+실행 파일 옆의 `deelook.toml`입니다(`deelook -config /etc/deelook/deelook.toml`처럼 다른 파일을 줄 수 있음). 없으면 처음 실행할 때
+지금 쓰이는 기본값으로 만들어집니다. 안의 상대 경로(`data`, `fwlib`)는 그 파일이 있는 폴더 기준입니다. 이름은 명령줄 옵션
+(`deelook -h`)과 같고, 명령줄로 준 값이 우선합니다. 바꾼 뒤 deelook을 다시 시작해야 적용됩니다(`hub`는 화면에서 바꾸면 바로).
 
 | 이름 | 기본값 | 뜻 |
 |---|---|---|
@@ -101,6 +104,7 @@ _실행 중인 deelook의 `/help`에서는 여기에 허브 연결, FOCAS2 라�
 | `GET /api/sampling/types` | 데이터 종류 표(서보, 주축, CNC 정보)와 PMC 주소 종류 |
 | `GET /api/sampling/machines` | 수집할 수 있는 기계와 축 이름, 허브 연결 상태, FOCAS2 라이브러리 |
 | `POST /api/sampling/machines` | 기계를 IP로 추가: `{"name", "host", "port"}` (CNC에 연결해 축 이름을 읽음) |
+| `POST /api/sampling/library` | FOCAS2 라이브러리가 없을 때 파일 하나를 그대로(`Content-Type: application/octet-stream`). 시험한 FANUC 판만 받고, 다 모이면 바로 불러옴 |
 | `PATCH /api/sampling/machines/{machine}` | 직접 추가한 기계 바꾸기: `{"name", "host", "port"}` (빈 값·0은 그대로, 새 주소면 연결해서 축 이름을 다시 읽음) |
 | `DELETE /api/sampling/machines/{machine}` | 직접 추가한 기계 지우기 |
 | `POST /api/sampling/machines/{machine}/names` | 축 이름을 CNC에서 다시 읽기 |

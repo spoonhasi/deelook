@@ -38,12 +38,25 @@ func main() {
 	o := defineFlags(flag.CommandLine)
 	listen, hubURL, defMachine, interval, timeout := o.listen, o.hub, o.machine, o.interval, o.timeout
 	lampFlag, fwlib, open := o.lamps, o.fwlib, o.open
-	// deelook.toml next to the executable first, so the command line wins;
-	// where there is none, one with the defaults is put there to edit
+	// command line only: a settings file cannot name itself
+	config := flag.String("config", "", "settings file (empty: "+settingsName+" next to the executable); "+
+		"relative paths in it are taken from its folder")
+	flag.Parse() // for -config; parsed again below, so the command line wins over the file
+	// the settings file first; where there is none, one with the defaults
+	// is put there to edit
 	exeDir := executableDir()
-	settingsPath := filepath.Join(exeDir, settingsName)
+	settingsPath := *config
+	if settingsPath == "" {
+		settingsPath = filepath.Join(exeDir, settingsName)
+	}
+	if abs, err := filepath.Abs(settingsPath); err == nil {
+		settingsPath = abs
+	}
 	if writeSettingsTemplate(settingsPath) {
 		log.Printf("wrote %s with the default settings, to edit", settingsPath)
+	}
+	if _, err := os.Stat(settingsPath); err != nil && *config != "" {
+		fatal("settings file %s: %v", settingsPath, err) // asked for by name, and not there
 	}
 	if err := loadSettings(flag.CommandLine, settingsPath); err != nil {
 		fatal("%v", err)
@@ -102,9 +115,18 @@ func main() {
 		writeJSON(w, map[string]any{"default": *defMachine, "machines": out})
 	})
 
+	// the library: as set, else next to the executable, else one uploaded
+	// earlier into the data folder (sampling.LibraryDir)
 	libPath := *fwlib
 	if libPath == "" {
 		libPath = focas.FindLibrary(exeDir)
+		if _, err := os.Stat(libPath); err != nil {
+			if up := focas.FindLibrary(sampling.LibraryDir(dataDir)); up != "" {
+				if _, err := os.Stat(up); err == nil {
+					libPath = up
+				}
+			}
+		}
 	}
 	lib, libErr := focas.Load(libPath)
 	if libErr != nil {

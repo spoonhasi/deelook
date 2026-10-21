@@ -369,12 +369,13 @@ func (m *Manager) onHost(id, host string, fn func()) error {
 
 // readNames reads a machine's axis and spindle names over FOCAS2.
 func (m *Manager) readNames(t target) (axes, spindles []string, paths int, err error) {
-	if err := m.needLib(); err != nil {
+	lib, err := m.needLib()
+	if err != nil {
 		return nil, nil, 0, err
 	}
 	ferr := m.onHost(t.ID, t.Host, func() {
 		var h *focas.Handle
-		h, err = m.lib.Connect(t.Host, t.Port, 10*time.Second)
+		h, err = lib.Connect(t.Host, t.Port, 10*time.Second)
 		if err != nil {
 			return
 		}

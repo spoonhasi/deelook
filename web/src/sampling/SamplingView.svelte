@@ -494,6 +494,32 @@
   let editOpen = $state(false)
   let manageBusy = $state(false)
   let manageMsg = $state('')
+  // a FOCAS2 library uploaded while there is none: loaded at once when complete
+  let libBusy = $state(false)
+  let libNotes = $state<string[]>([])
+  async function uploadLibrary(input: HTMLInputElement) {
+    const files = [...(input.files ?? [])]
+    input.value = ''
+    if (!files.length) return
+    libBusy = true
+    libNotes = []
+    try {
+      for (const f of files) {
+        try {
+          const r = await api.uploadLibrary(f)
+          libNotes.push(`${f.name}: 받음 (${r.file} ${r.version})` + (r.missing?.length ? ` · 남은 파일 ${r.missing.join(', ')}` : ''))
+          if (r.error) libNotes.push(`불러오지 못함: ${r.error}`)
+          library = r.library
+        } catch (e) {
+          libNotes.push(`${f.name}: ${(e as Error).message}`)
+        }
+      }
+      if (library?.available) await loadMachines() // sampling on: names and machines as usual
+    } finally {
+      libBusy = false
+    }
+  }
+
   /** Runs a machine change and reloads the list; false when it failed (manageMsg says why). */
   async function manage(what: () => Promise<string | void>): Promise<boolean> {
     manageBusy = true
@@ -698,6 +724,22 @@
             </li>
           </ul>
           <p class="hint">찾은 곳: {library.path}<br />{library.error}</p>
+          {#if library.uploadable}
+            <!-- only while there is none: a loaded library is changed by hand and a restart -->
+            <div class="libup">
+              <b>파일 올리기</b>
+              <span class="hint">{library.needs?.join(', ')}{(library.needs?.length ?? 0) > 1 ? ' 둘 다' : ''}</span>
+              <label class="pick">
+                <input type="file" multiple onchange={(e) => uploadLibrary(e.currentTarget)} disabled={libBusy} />
+                {libBusy ? '올리는 중…' : '파일 고르기'}
+              </label>
+              {#each libNotes as n (n)}<p class="hint">{n}</p>{/each}
+              <p class="hint">
+                deelook이 시험한 FANUC 판(SHA-256이 맞는 파일)만 받습니다. 다른 판은 위처럼 직접 넣고 다시 시작하면 씁니다. 다 올리면
+                다시 시작하지 않아도 바로 불러오고, 파일은 이 PC의 데이터 폴더(<code>fwlib</code>)에만 저장됩니다.
+              </p>
+            </div>
+          {/if}
         </div>
       {/if}
       {#if !hub.ok && !hub.off}
@@ -1432,6 +1474,30 @@
     flex: 1 1 0;
     min-width: 5em;
     max-width: 360px;
+  }
+  .libup {
+    display: grid;
+    gap: 6px;
+    margin-top: 10px;
+    padding-top: 10px;
+    border-top: 1px solid #5a4a20;
+  }
+  .libup .pick {
+    justify-self: start;
+    display: inline-flex;
+    align-items: center;
+    height: 32px;
+    padding: 0 14px;
+    border: 1px solid #555;
+    border-radius: 4px;
+    background: #2d2d2d;
+    cursor: pointer;
+  }
+  .libup .pick input {
+    display: none;
+  }
+  .libup p {
+    margin: 0;
   }
   .mform {
     display: grid;
