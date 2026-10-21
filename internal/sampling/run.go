@@ -166,7 +166,7 @@ func (r *run) loop() {
 		var chs []focas.Channel2
 		chs, order, err = r.cfg.focasChannels2()
 		if err == nil {
-			err = r.call("cnc_sdtsetchnl2", func() error { return h.SetChannels2(chs, r.cfg.points()) })
+			err = r.call("cnc_sdtsetchnl2", func() error { return h.SetChannels2(chs, r.cfg.cncPoints()) })
 			if focas.Is(err, focas.EW_VERSION) {
 				err = fmt.Errorf("%w: this CNC does not support one of the channels (PMC byte/word channels need a 30i-B with newer software)", err)
 			}
@@ -242,6 +242,8 @@ func (r *run) loop() {
 	}{at: time.Now()}
 	var failure, lowDisk error
 	finished, stopping := false, false // finished: the CNC took all points
+	limit := r.cfg.keepPoints()        // points a channel keeps (0: all), the CNC's padding left out
+	var read0 int64                    // points read of channel 1, padding included: where marks are
 	lastDiskCheck := time.Now()
 
 	for {
@@ -285,7 +287,10 @@ func (r *run) loop() {
 			for j, n := range reader.Counts {
 				i := order[j]
 				r.reads.LastPoints[i] = max(n, 0)
-				if n <= 0 {
+				if i == 0 {
+					read0 += int64(max(n, 0))
+				}
+				if n = keep(r.samples[i], n, limit); n <= 0 {
 					continue
 				}
 				got = true
@@ -302,8 +307,8 @@ func (r *run) loop() {
 			}
 			// a trigger shows in the one read that ends at it; after the end
 			// (STSM) every read repeats the bits, but the loop stops there
-			if trg != 0 {
-				e := Event{TimeUs: max(r.samples[0]-1, 0) * int64(r.cfg.PeriodUs(0)), Bits: trg, At: now}
+			if bits, at := mark(trg, max(read0-1, 0), limit); bits != 0 {
+				e := Event{TimeUs: at * int64(r.cfg.PeriodUs(0)), Bits: bits, At: now}
 				pending.events = append(pending.events, e)
 				r.events = append(r.events, e)
 				if len(r.events) > maxEvents {

@@ -215,6 +215,10 @@
   }
 
   // what is wrong with the form, in words; the server checks again
+  // an extended sampling with a number of points asks the CNC for this many
+  // more and drops them: they take the 0s the CNC ends PMC and CNC
+  // information channels with (endPad on the server)
+  const END_PAD = 16
   const BIT = /^[GFYXARTKCDMNEZ]\d{1,5}\.[0-7]$/
   const WORD = /^[GFYXARTKCDMNEZ]\d{1,5}$/
   const problems = $derived.by(() => {
@@ -288,7 +292,8 @@
       ['cnc_allclibhndl3', '연결 (deemesh와 별도 핸들)'],
       [
         'cnc_sdtsetchnl2',
-        `채널 ${n}개 (IDBSDTCHAN2: PMC 주소 io[16]), datanum ${points}${points < 0 ? ' (종료할 때까지)' : ' 점'}` +
+        `채널 ${n}개 (IDBSDTCHAN2: PMC 주소 io[16]), datanum ` +
+          (points < 0 ? `${points} (종료할 때까지)` : `${points + END_PAD} (${points}점 + 끝의 0을 버릴 ${END_PAD}점)`) +
           (f.channels.some((c) => c.kind === 'pmcbit') ? ' — PMC 비트 채널은 맨 뒤로 보냄' : ''),
       ],
       [

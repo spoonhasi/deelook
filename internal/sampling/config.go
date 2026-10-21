@@ -235,6 +235,52 @@ func (c *Config) points() int32 {
 	return int32(c.Points)
 }
 
+// endPad is how many points more than asked an extended sampling with a
+// number of points asks the CNC for. When such a sampling ends, the CNC
+// returns the last few points of the PMC and CNC information channels as
+// 0 whatever the signals were (measured on a 30i-B and NC Guide 0i-F: 4
+// PMC points, 8 N number points). The padding takes those: it is read
+// but not kept.
+const endPad = 16
+
+// cncPoints is the datanum given to the CNC: the points asked for, padded
+// for an extended sampling with a number of points (endPad).
+func (c *Config) cncPoints() int32 {
+	n := c.points()
+	if n > 0 && c.extended() {
+		n += endPad
+	}
+	return n
+}
+
+// keepPoints is the number of points a channel keeps: the points asked for
+// when the CNC was asked for more (cncPoints), else 0 for all.
+func (c *Config) keepPoints() int64 {
+	if c.cncPoints() != c.points() {
+		return int64(c.Points)
+	}
+	return 0
+}
+
+// keep is how many of n points just read a channel keeps, having kept
+// have, when it keeps at most limit (0: all).
+func keep(have int64, n int32, limit int64) int32 {
+	if limit <= 0 {
+		return n
+	}
+	return int32(max(0, min(int64(n), limit-have)))
+}
+
+// mark is a trigger read at point at (from the first sample) as kept when
+// only limit points are (0: all): within them it stays; in the padding
+// only the end (STSM) does, at the last point kept.
+func mark(bits uint16, at, limit int64) (uint16, int64) {
+	if limit > 0 && at >= limit {
+		return bits & focas.TrgEnded, limit - 1
+	}
+	return bits, at
+}
+
 func (c *Config) periodCode() uint16 {
 	if c.ServoPeriodUs == 250 {
 		return 2 // 0.25 ms; spindle channels stay at 1 ms

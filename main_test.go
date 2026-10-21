@@ -17,7 +17,7 @@ func TestPickMachine(t *testing.T) {
 		{ID: 20, Name: "auto", Protocol: "nc_focas2_fanuc"},
 	}
 	for machine, want := range map[string]int{
-		"":     2, // the lowest-numbered FANUC, wherever it is on the list
+		"":     2,  // the lowest-numbered FANUC, wherever it is on the list
 		"auto": 20, // a name like any other
 		"13":   13, "bench-31i": 2,
 		"5": 0, "lathe": 0, "7": 0, // not FANUC, not on the list
