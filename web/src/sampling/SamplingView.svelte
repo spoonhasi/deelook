@@ -764,7 +764,7 @@
                 </select>
               {:else}
                 <input type="text" class="addr grow" value={(c.signals ?? []).join(', ')} disabled={locked}
-                  placeholder={c.kind === 'pmcbit' ? 'Y0.4, X8.4' : 'R100'}
+                  placeholder={c.kind === 'pmcbit' ? 'R9091.6, R9091.5' : 'R100'}
                   aria-label="채널 {i + 1} PMC 주소" onchange={(e) => setSignals(c, e.currentTarget.value)} />
                 <select bind:value={c.unit} disabled={locked} aria-label="채널 {i + 1} PMC 경로">
                   {#each PMC_UNITS as u (u)}<option value={u}>PMC{u}</option>{/each}
