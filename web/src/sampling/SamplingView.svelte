@@ -858,24 +858,28 @@
         </HelpButton>
       </div>
 
-      {#if problems.length}
-        <ul class="problems">
-          {#each problems as p (p)}<li>{p}</li>{/each}
-        </ul>
-      {/if}
       <div class="actions">
         <button class="primary" onclick={start} disabled={busy || active || !machineId || !!machine?.error || problems.length > 0 || !libOk || lowDisk}>수집 시작</button>
         <button class="danger" onclick={stop} disabled={busy || !active}>수집 종료</button>
+        <HelpButton title="이 설정이 부르는 FOCAS2 함수" label="FOCAS2 함수">
+          <ol class="calls">
+            {#each calls as [fn, what], i (i)}<li><code>{fn}</code> {what}</li>{/each}
+          </ol>
+          <p class="hint">
+            설정 전에 남아 있는 세션을 정리하려고 cnc_sdtcancelsmpl{ext ? ', cnc_sdtendsmpl2' : ''}, cnc_sdtclrchnl도 부릅니다.
+            실제로 부른 기록과 결과는 오른쪽 상태 칸의 "FOCAS2 호출 기록"에 있습니다.
+          </p>
+        </HelpButton>
+        <!-- why it cannot start, in this row: one line however many reasons -->
+        {#if problems.length}
+          <HelpButton title="수집을 시작할 수 없는 이유" warn
+            label={'⚠ ' + problems[0] + (problems.length > 1 ? ` (외 ${problems.length - 1}건)` : '')}>
+            <ul>{#each problems as p (p)}<li>{p}</li>{/each}</ul>
+          </HelpButton>
+        {/if}
       </div>
       {#if message}{@render err(message)}{/if}
 
-      <details class="calls" open>
-        <summary>이 설정이 부르는 FOCAS2 함수</summary>
-        <ol>
-          {#each calls as [fn, what], i (i)}<li><code>{fn}</code> <span class="hint">{what}</span></li>{/each}
-        </ol>
-        <p class="hint">설정 전에 남아 있는 세션을 정리하려고 cnc_sdtcancelsmpl{ext ? ', cnc_sdtendsmpl2' : ''}, cnc_sdtclrchnl도 부릅니다.</p>
-      </details>
 
       <h3>현재값 한 번 읽기 <small>cnc_sdtread1shot</small></h3>
       <p class="hint">수집 없이 위 채널(서보·주축만)의 지금 값을 읽습니다: 연결 → cnc_sdtsetchnl → cnc_sdtread1shot → cnc_sdtclrchnl → 해제.</p>
@@ -1248,8 +1252,20 @@
   }
   .actions {
     display: flex;
+    align-items: center;
     gap: 8px;
     margin-top: 10px;
+    min-width: 0; /* the warning shortens with "…" instead of wrapping */
+  }
+  .actions > button {
+    flex: none;
+  }
+  ol.calls {
+    margin: 6px 0;
+    padding-left: 22px;
+  }
+  ol.calls li {
+    margin: 4px 0;
   }
   .hint {
     color: var(--text-secondary);
@@ -1300,12 +1316,6 @@
   .warn {
     color: #ffb77c;
     font-size: 13px;
-  }
-  .problems {
-    margin: 8px 0 0;
-    padding-left: 18px;
-    color: #ffb77c;
-    font-size: 12px;
   }
   dl {
     display: grid;
@@ -1364,17 +1374,6 @@
   details.calls summary {
     cursor: pointer;
     color: var(--text-primary);
-  }
-  details.calls ol {
-    margin: 6px 0;
-    padding-left: 22px;
-  }
-  details.calls ol {
-    overflow-x: auto; /* one line per call: its height stays when the mode changes */
-  }
-  details.calls li {
-    margin: 2px 0;
-    white-space: nowrap;
   }
   td.links {
     white-space: nowrap;

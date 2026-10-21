@@ -2,9 +2,12 @@
   // A "?" button that opens an explanation in a modal dialog: long
   // explanations stay out of the form, so switching an option does not
   // move the page. Esc, the close button or a click beside the box closes it.
+  // With a label it is a text button instead, one line that shortens with
+  // "…" rather than wrap (warn: in the warning colour).
   import type { Snippet } from 'svelte'
 
-  let { title, children }: { title: string; children: Snippet } = $props()
+  let { title, label = '', warn = false, children }: { title: string; label?: string; warn?: boolean; children: Snippet } =
+    $props()
   let dialog: HTMLDialogElement
 
   function beside(e: MouseEvent) {
@@ -12,7 +15,11 @@
   }
 </script>
 
-<button type="button" class="help" aria-label="{title} 설명" title="설명" onclick={() => dialog.showModal()}>?</button>
+{#if label}
+  <button type="button" class="text" class:warn title={label} onclick={() => dialog.showModal()}>{label}</button>
+{:else}
+  <button type="button" class="help" aria-label="{title} 설명" title="설명" onclick={() => dialog.showModal()}>?</button>
+{/if}
 <dialog bind:this={dialog} onclick={beside} aria-label={title}>
   <div class="box">
     <header>
@@ -42,6 +49,26 @@
   .help:focus-visible {
     color: #fff;
     border-color: #aaa;
+  }
+  .text {
+    flex: none;
+    min-width: 0;
+    padding: 0;
+    border: none;
+    background: none;
+    color: #8ab4f8;
+    font: inherit;
+    font-size: 13px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    text-decoration: underline dotted;
+    text-underline-offset: 3px;
+    cursor: pointer;
+  }
+  .text.warn {
+    flex: 0 1 auto; /* gives way first when the row is short */
+    color: #ffb77c;
   }
   dialog {
     width: min(680px, calc(100vw - 32px));
