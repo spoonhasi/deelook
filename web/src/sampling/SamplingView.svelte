@@ -745,11 +745,13 @@
             <option value={m.machine}>{m.name || '?'} ({source === 'local' ? m.machine : `machine ${m.machine}`})</option>
           {/each}
         </select>
-        {#if source === 'local'}
-          <!-- the hub's machines are named and placed on the hub -->
-          <button type="button" onclick={openAdd} disabled={busy} title="허브에 없는 FANUC 기계를 IP로 추가">추가</button>
-          <button type="button" onclick={openEdit} disabled={busy || !machine} title="이름·주소 바꾸기, 축 이름 읽기, 지우기">변경</button>
-        {/if}
+        <!-- for the machines added here only (the hub's are named and placed on
+             the hub); hidden rather than left out for the hub's list, so the row
+             keeps its height and the menu its width when the list changes -->
+        <button type="button" class:unseen={source !== 'local'} aria-hidden={source !== 'local'} tabindex={source === 'local' ? 0 : -1}
+          onclick={openAdd} disabled={busy || source !== 'local'} title="허브에 없는 FANUC 기계를 IP로 추가">추가</button>
+        <button type="button" class:unseen={source !== 'local'} aria-hidden={source !== 'local'} tabindex={source === 'local' ? 0 : -1}
+          onclick={openEdit} disabled={busy || source !== 'local' || !machine} title="이름·주소 바꾸기, 축 이름 읽기, 지우기">변경</button>
       </div>
       {#if machine?.error}<p class="error">{machine.error}</p>{/if}
       {#if machine?.note}
@@ -1438,6 +1440,9 @@
     color: #ff8a80;
     font-size: 13px;
     white-space: pre-wrap;
+  }
+  .unseen {
+    visibility: hidden;
   }
   /* the machine menu gives way, so add and change stay on its right */
   select.machine {
