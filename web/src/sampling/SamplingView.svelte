@@ -244,7 +244,7 @@
     if (ext && f.trgSigOn && PMC_KINDS.some((k) => !k.trigger && f.trgSignal.trim().toUpperCase().startsWith(k.letter)))
       p.push('T(타이머)·C(카운터)·Z 주소는 책갈피 신호로 쓸 수 없습니다.')
     if (ext && f.trgSigOn) {
-      if (!BIT.test(f.trgSignal.trim().toUpperCase())) p.push('책갈피 신호는 Y0.4 같은 PMC 비트 주소여야 합니다.')
+      if (!BIT.test(f.trgSignal.trim().toUpperCase())) p.push('책갈피 신호는 R9091.6 같은 PMC 비트 주소여야 합니다.')
       if (!f.trgUp && !f.trgDown) p.push('책갈피를 남길 변화(0→1, 1→0)를 하나 이상 고르세요.')
     }
     if (!ext && f.waitBlock && !(f.startSeq > 0)) p.push('시작 블록 번호를 넣으세요.')
@@ -254,6 +254,19 @@
 
   // read1shot works on servo and spindle channels only
   const shotChannels = $derived(form.channels.filter((c) => BASIC_KINDS.includes(c.kind)))
+
+  /** A PMC address as FOCAS2 takes it, PMC_DATA: R9091.6 is {unittype 1, adr 5 (R), bit 6, no 9091}. */
+  function pmcData(addr: string, unit: number): string {
+    const m = /^([A-Z])(\d+)(?:\.([0-7]))?$/.exec(addr.trim().toUpperCase())
+    const k = m ? types.pmcKinds.indexOf(m[1]) : -1
+    if (!m || k < 0) return addr
+    return `{unittype ${unit}, adr ${k} (${m[1]}), bit ${m[3] ?? 0}, no ${Number(m[2])}}`
+  }
+
+  /** The bookmark example: a PMC system relay the PMC itself flips every 0.5 s. */
+  function bookmarkExample() {
+    Object.assign(form, { trgSigOn: true, trgSignal: 'R9091.6', trgUnit: 1, trgUp: true, trgDown: true })
+  }
 
   /** The FOCAS2 calls this setup makes, with its arguments. */
   const calls = $derived.by(() => {
@@ -281,7 +294,7 @@
       [
         'cnc_sdtstartsmpl2',
         `path ${f.path}, condition 0x${cond.toString(16).padStart(4, '0')}` +
-          (cond ? `, TRG_DATA {seq_no ${f.trgSeqOn ? f.trgSeq : 0}, pmc_trg ${f.trgSigOn ? f.trgSignal : '-'}}` : ' (책갈피 없음)'),
+          (cond ? `, TRG_DATA {seq_no ${f.trgSeqOn ? f.trgSeq : 0}, pmc_trg ${f.trgSigOn ? pmcData(f.trgSignal, f.trgUnit) : '-'}}` : ' (책갈피 없음)'),
       ],
       ['cnc_sdtreadsmpl2', '반복 — trg 비트: SEQ / P_UP / P_DW 표시, STSM = 다 모음'],
       [
@@ -711,7 +724,7 @@
           <span></span>
           <label class="opt"><input type="checkbox" bind:checked={form.trgSigOn} disabled={locked} />PMC 신호</label>
           {#if form.trgSigOn}
-            <input type="text" class="addr" bind:value={form.trgSignal} placeholder="Y0.4" disabled={locked} aria-label="책갈피 PMC 주소" />
+            <input type="text" class="addr" bind:value={form.trgSignal} placeholder="R9091.6" disabled={locked} aria-label="책갈피 PMC 주소" />
             <select bind:value={form.trgUnit} disabled={locked} aria-label="책갈피 PMC 경로">
               {#each PMC_UNITS as u (u)}<option value={u}>PMC{u}</option>{/each}
             </select>
@@ -722,6 +735,8 @@
         <p class="hint">
           책갈피(FANUC 이름: 트리거)는 수집을 시작·종료시키지 않습니다. 수집은 그대로 이어지고, 조건이 맞는 순간 CNC가 그
           자리에 책갈피를 남깁니다(차트의 점선, CSV의 trigger 열). 시작할 때 이미 1인 신호에는 남지 않고, 그 뒤 실제로 바뀐 순간에만 남습니다.
+          <br />시험해 보기: <button type="button" class="link" onclick={bookmarkExample} disabled={locked}>R9091.6</button> — PMC가
+          0.5초마다 저절로 0과 1을 바꾸는 시스템 릴레이라, 기계를 건드리지 않아도 책갈피가 0.5초마다 남습니다.
         </p>
       {/if}
 
