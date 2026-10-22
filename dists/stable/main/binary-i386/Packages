@@ -1,0 +1,19 @@
+Package: deelook
+Architecture: i386
+Version: 0.1.0
+Priority: optional
+Section: misc
+Maintainer: spoonhasi <spoonhasi@gmail.com>
+Installed-Size: 12166
+Depends: libc6, libstdc++6, libgcc-s1
+Filename: pool/main/d/deelook/deelook_0.1.0_i386.deb
+Size: 5458306
+MD5sum: 616b01b04806b633e0fa737f981bb3d9
+SHA1: 4358605e99038f55b3f5a2b84159314c8395a553
+SHA256: 92a87ccb7e49c46d0815344a034ef76efa835c6cce0c1fdd2150ed5e2b3a71ad
+SHA512: acf158f6d090617c3158735eb51e52b6cca7efb8e1be9e57c881946982416a81352f6e26bed1c7f10acdddeec46777b3e00c03b66652539d769540cc45d759ef
+Homepage: https://github.com/spoonhasi/deelook
+Description: Web HMI screens and high-speed sampling for FANUC CNCs
+ deelook draws a FANUC HMI in the browser from deemesh-hub and records
+ FOCAS2 cnc_sdt* high-speed sampling into SQLite files.
+
