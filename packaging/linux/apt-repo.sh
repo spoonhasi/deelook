@@ -46,6 +46,8 @@ gpg --batch --yes --local-user "$fpr" --digest-algo SHA512 --clearsign -o "$dist
 gpg --batch --yes --local-user "$fpr" --digest-algo SHA512 --armor --detach-sign -o "$dist/Release.gpg" "$dist/Release"
 cp "$pub" deelook-archive-keyring.asc
 touch .nojekyll # files served as they are
+# and kept as they are (the signatures cover them): no CRLF on Windows
+echo '* -text' >.gitattributes
 
 # the page: how to install the newest package
 deb=$(find pool -name 'deelook_*_i386.deb' | sort -V | tail -1)
