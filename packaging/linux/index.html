@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>deelook apt 저장소</title>
+<style>
+  :root { color-scheme: light dark; --fg: #1d1d1f; --muted: #5f6368; --bg: #fff; --code: #f3f4f6; --line: #d9dce1; }
+  @media (prefers-color-scheme: dark) { :root { --fg: #e8eaed; --muted: #9aa0a6; --bg: #17181a; --code: #23252a; --line: #3a3d42; } }
+  body { margin: 0; background: var(--bg); color: var(--fg); font: 16px/1.6 system-ui, "Noto Sans KR", sans-serif; }
+  main { max-width: 760px; margin: 0 auto; padding: 32px 16px 48px; }
+  h1 { font-size: 1.6em; margin: 0 0 4px; }
+  h2 { font-size: 1.15em; margin: 32px 0 8px; }
+  p, li { color: var(--fg); }
+  .muted { color: var(--muted); }
+  pre { background: var(--code); border: 1px solid var(--line); border-radius: 6px; padding: 12px 14px; overflow-x: auto; }
+  code { font: 14px/1.5 ui-monospace, "JetBrains Mono", Consolas, monospace; }
+  a { color: inherit; }
+</style>
+</head>
+<body>
+<main>
+  <h1>deelook apt 저장소</h1>
+  <p class="muted">FANUC CNC의 HMI 화면과 FOCAS2 고속 샘플링 · 지금 판 <b>@VERSION@</b> ·
+    <a href="https://github.com/spoonhasi/deelook">github.com/spoonhasi/deelook</a></p>
+
+  <h2>처음 설치 (x86 Linux, Ubuntu·Debian)</h2>
+  <pre><code>sudo dpkg --add-architecture i386 &amp;&amp; sudo apt update
+wget https://spoonhasi.github.io/deelook/@DEB@
+sudo apt install ./@DEBNAME@</code></pre>
+  <p>패키지가 이 저장소를 apt에 등록하고(<code>/etc/apt/sources.list.d/deelook.sources</code>), deelook 서비스를 켭니다.
+    브라우저에서 <code>http://&lt;그 PC&gt;:8090/</code>으로 들어갑니다.</p>
+
+  <h2>업데이트</h2>
+  <pre><code>sudo apt update &amp;&amp; sudo apt upgrade</code></pre>
+
+  <h2>서명 키</h2>
+  <p>저장소는 <a href="deelook-archive-keyring.asc">deelook-archive-keyring.asc</a>로 서명됩니다.<br>
+    지문 <code>@FINGERPRINT@</code></p>
+</main>
+</body>
+</html>

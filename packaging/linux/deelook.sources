@@ -1,0 +1,8 @@
+# deelook의 apt 저장소: 새 판은 sudo apt update && sudo apt upgrade 로 받습니다.
+# deelook 패키지가 넣은 파일입니다. 업데이트를 받지 않으려면 아래에 Enabled: no 를 넣습니다.
+Types: deb
+URIs: https://spoonhasi.github.io/deelook/
+Suites: stable
+Components: main
+Architectures: i386
+Signed-By: /usr/share/keyrings/deelook-archive-keyring.asc

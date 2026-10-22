@@ -251,12 +251,21 @@ deelook\
 
 ### Linux: 패키지(.deb)로 설치 (서비스)
 
-x86 PC(32비트 deelook, 64비트 Ubuntu·Debian에서도 됨)에 `deelook_<판>_i386.deb`로 설치합니다. 켜질 때 서비스로 돌고,
-꺼지면 3초 뒤 다시 켜집니다. 브라우저는 열지 않으니 `http://<그 PC>:8090/`으로 들어갑니다.
+x86 PC(32비트 deelook, 64비트 Ubuntu·Debian에서도 됨)에 apt 저장소 <https://spoonhasi.github.io/deelook/>의
+`.deb`로 설치합니다(그 페이지에 지금 판의 명령이 있음). 켜질 때 서비스로 돌고, 꺼지면 3초 뒤 다시 켜집니다. 브라우저는
+열지 않으니 `http://<그 PC>:8090/`으로 들어갑니다.
 
 ```bash
 sudo dpkg --add-architecture i386 && sudo apt update   # 64비트 Linux에서 한 번 (32비트 libc·libstdc++를 받으려고)
+wget https://spoonhasi.github.io/deelook/pool/main/d/deelook/deelook_0.1.0_i386.deb
 sudo apt install ./deelook_0.1.0_i386.deb
+```
+
+패키지가 그 저장소를 apt에 등록하므로(`/etc/apt/sources.list.d/deelook.sources`, 서명 키
+`/usr/share/keyrings/deelook-archive-keyring.asc`), 그다음부터 새 판은 다른 패키지와 함께 받습니다.
+
+```bash
+sudo apt update && sudo apt upgrade
 ```
 
 | 어디 | 무엇 |
@@ -328,6 +337,12 @@ Linux 패키지는 그다음에 만듭니다(Go가 처음에 [nfpm](https://nfpm
 ```bash
 ./package-deb.sh   # build.sh 다음 dist/deelook_<판>_i386.deb
 ```
+
+apt 저장소는 이 저장소의 `gh-pages` 브랜치이고 GitHub Pages가 내보냅니다. 인덱스와 서명은
+[`packaging/linux/apt-repo.sh`](packaging/linux/apt-repo.sh)가 만듭니다(Debian·Ubuntu, Windows에서는 WSL에서). 서명
+키는 판을 내는 PC에만 있고(`~/.gnupg-deelook-apt`), 공개키는
+[`packaging/linux/deelook-archive-keyring.asc`](packaging/linux/deelook-archive-keyring.asc)입니다
+(지문 `48D0 DDB6 E4AA 4109 C95F 108A CAA5 6673 4ED2 8AA3`).
 
 ## 개발
 

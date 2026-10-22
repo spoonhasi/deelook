@@ -9,6 +9,7 @@
 #   /var/lib/deelook/                      the data folder (sessions/,
 #                                          deelook.db, fwlib/), never removed
 #   deelook.service                        runs it as the user deelook
+#   /etc/apt/sources.list.d/deelook.sources  the apt repository, for updates
 #
 # The FANUC FOCAS2 library is not in the package: upload it on the
 # sampling page, or put it in /opt/deelook (fwlib/README.md).
@@ -47,6 +48,17 @@ contents:
       mode: 0644
   - src: LICENSE
     dst: /usr/share/doc/deelook/copyright
+    file_info:
+      mode: 0644
+  # the apt repository (GitHub Pages) and its key: after the first install
+  # new versions come with apt update && apt upgrade
+  - src: packaging/linux/deelook.sources
+    dst: /etc/apt/sources.list.d/deelook.sources
+    type: config
+    file_info:
+      mode: 0644
+  - src: packaging/linux/deelook-archive-keyring.asc
+    dst: /usr/share/keyrings/deelook-archive-keyring.asc
     file_info:
       mode: 0644
   - dst: /etc/deelook
