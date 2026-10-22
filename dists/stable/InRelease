@@ -5,36 +5,27 @@ Acquire-By-Hash: yes
 Architectures: i386
 Codename: stable
 Components: main
-Date: Thu, 22 Oct 2026 02:18:04 +0000
+Date: Thu, 22 Oct 2026 02:19:54 +0000
 Description: deelook (https://github.com/spoonhasi/deelook)
 Label: deelook
 Origin: deelook
 Suite: stable
-MD5Sum:
- 30d86bef6b87496562dadf4f61d4b85a              796 main/binary-i386/Packages
- 7161a74784b446662a9c21b1612fc786              552 main/binary-i386/Packages.gz
-SHA1:
- a47ce42c3b0a9119a34553388bfe0a5c3b5957aa              796 main/binary-i386/Packages
- 05e23f4233385e28ed61ea6a2d7ca9a779e0e664              552 main/binary-i386/Packages.gz
 SHA256:
  5e4474e2630d323eeaa5b78de7238ab74b94bba7a4926d0d23107f4e797d28df              796 main/binary-i386/Packages
  af3721d01eeffb3e8fce5fd6907103c87a400c0363333212275191586758bae9              552 main/binary-i386/Packages.gz
-SHA512:
- b55ace0b7498148a98f8f9abcc74c3c86ee0f6c9d4f26ea8a11408d70bf2d1df840094a1c5878efdddc56c4cd3f860b0d68d37a9781ae8a197215d439130e05f              796 main/binary-i386/Packages
- b5aff9f01f82dd3432d12ad5b073c67566e33e118487f86b40e3d962b49fc33ff69772cd91402fcf8dd8652300655db3d72aed6621f250ca848746ccb19aca7a              552 main/binary-i386/Packages.gz
 -----BEGIN PGP SIGNATURE-----
 
-iQIzBAEBCgAdFiEESNDdtuSqQQnJXxCKyqVmc07SiqMFAmrZclwACgkQyqVmc07S
-iqOxFxAAha6bRoligMggyY56IAewdeYn+e5poeDsi0I5zPSsP6JpzTKNypfOVqlA
-/PuesaiORAg9PAlBZrsibgrjo0OFzH2U41Xwl06cfVK/90HdHps4oOvea73CvVag
-GsEIjZUMLJCDJpC20hQw19LmYYrMi84ZGO9ovl4E/IcCLG9ZhJZ0cNC6JMKQQyqs
-J3JJlm5qLEwbZkSjNf1nD9TuEUvQnPM0zTzj4KeGEZUgViUzhFqIMPIZUTwyfVHA
-b/VXGH4308b1ImLLb9bUrPTtXwcx5320k6B5Rl1FCrYiVILb6k1IZDrPvAXBnKqH
-WgknIlxsaPuW43jT+mTJjktyvqR8719J1QfEKKP/XcL5t4XE+vfeAoC/WfuuI8Cq
-+ddJQVesadsdJJFGvzPEgDzH8AUZ9Oona+jQkkeFc/HETqFAGayMIVtNtXdFNpN5
-s5381paPpu4bLHiyKq8usCqme+QqWEx1DODOaxRKutr76mj3uRcaLIsPtUeMnyIr
-dbW9hnYMBlkc0AKnA3W4g7lDStazh7dvaueieOaVpYtKNJQj7Lna33PWCPC6gJeV
-KLPWIesMD00O0zE51dPGNp3KnXrXh9RAidocUYWbp3YNd/kO3bVMGOoQtuOJAN8w
-RI37XuyQYrVyDAGFhxZdO08F0ikMMz10eiRkDYY2RS5539js7pk=
-=ti2a
+iQIzBAEBCgAdFiEESNDdtuSqQQnJXxCKyqVmc07SiqMFAmrZcsoACgkQyqVmc07S
+iqPdrBAAzy+DvPUv1qTmO60tcWVNvxt484s3iWZnvLeHwRcXxskIZjZTAE9ruyCU
+ZGSn7LFDh77gfgxVJk1N0uI6XgGgTBjyp9hGQWn0oN6aLPla/Els7lD7d2fE5djV
+5iFzjGJ3Sppe7O/H274f8G7KYO/O+UiXlOW+R+80pfcWH4SrhBQy+6gt57k2N+oe
+vcBW/m3YmDqqDHNPfo3RP07vJhGwOw74Mtdgy60h9rUP68UKPvl4gCtsalZrKgtj
+y3fIuuIFIIOtbneV6w5cHEk4zQ+rzWGNo4VznpYDwNU17KHE2Od3elDhzRF3SO1W
+/MJLMIwBiolPn2gO7O3m6bJa1N3fvblVDTZu4ObaUHeWQhyhoRdYu+qxtIWjH0Tq
+nSr6or6JBLBc8baAgvVtw5fOIaTRLcEubZCQW/kpIce3QKOPBvGtYwZAhSAx66re
+/W5Ckj5HiWa1gdY6Z74vvIxXqW5jNT2TFdORVt19nz92miyxZewdcJ6hqNzf5cdc
+hK9ulzqXwwXF0kQuqPkCqgLOrBM5VxPkn0Tt5kjDlkhI63fe02ye6gAnFBFbHJu5
+mvoMURZCb0MbewO7f6upJaauGOVWHp3KTdSC+EiJ1nspcMOTQ4G9fOnpIbSe47P0
+JrUEH61MeD4ZgQgXgxEACD3l7YmRW2PcBw3Tlzz5Bz8oONnBS7c=
+=BZAI
 -----END PGP SIGNATURE-----
