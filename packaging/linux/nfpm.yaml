@@ -31,7 +31,7 @@ license: MIT
 depends:
   - libc6
   - libstdc++6 # the FOCAS2 library is C++
-  - libgcc-s1
+  - libgcc-s1 | libgcc1 # libgcc1 before Ubuntu 20.04, Debian 11
 
 contents:
   - src: dist/stage/deelook

@@ -344,6 +344,14 @@ apt 저장소는 이 저장소의 `gh-pages` 브랜치이고 GitHub Pages가 내
 [`packaging/linux/deelook-archive-keyring.asc`](packaging/linux/deelook-archive-keyring.asc)입니다
 (지문 `48D0 DDB6 E4AA 4109 C95F 108A CAA5 6673 4ED2 8AA3`).
 
+새 판은 키가 있는 PC에서 [`release.sh`](release.sh) 하나로 냅니다. `VERSION`을 올려 커밋하고, 패키지를 만들어 저장소에
+넣은 뒤, `main`·`gh-pages`·태그 `v<판>`을 함께 푸시하고, Pages에 올라갈 때까지 기다립니다.
+
+```bash
+./release.sh -n 0.1.1   # 시험: 커밋·푸시 없이 dist/apt-try에 저장소를 만들어 봄
+./release.sh 0.1.1      # 냄
+```
+
 ## 개발
 
 ```bash

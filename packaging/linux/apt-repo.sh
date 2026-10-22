@@ -17,6 +17,14 @@ pub="$here/deelook-archive-keyring.asc"
 fpr=$(gpg --show-keys --with-colons "$pub" | awk -F: '/^fpr/ {print $10; exit}')
 
 cd "$dir"
+# FANUC's FOCAS2 libraries are not ours to publish (fwlib/README.md)
+for deb in $(find pool -name '*.deb'); do
+  if dpkg-deb -c "$deb" | awk '{print $NF}' | grep -qE '\.(so|dll)(\.|$)'; then
+    echo "apt-repo: $deb holds a shared library (FOCAS2?): not published" >&2
+    exit 1
+  fi
+done
+
 dist=dists/stable
 bin=$dist/main/binary-i386
 mkdir -p "$bin/by-hash/SHA256"
