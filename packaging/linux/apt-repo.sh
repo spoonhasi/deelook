@@ -30,7 +30,11 @@ for f in "$bin/Packages" "$bin/Packages.gz"; do
 done
 
 release=$(mktemp)
+# SHA256 only, as Debian's: apt asks by-hash for the strongest hash listed
 apt-ftparchive \
+  -o APT::FTPArchive::Release::MD5=false \
+  -o APT::FTPArchive::Release::SHA1=false \
+  -o APT::FTPArchive::Release::SHA512=false \
   -o APT::FTPArchive::Release::Origin=deelook \
   -o APT::FTPArchive::Release::Label=deelook \
   -o APT::FTPArchive::Release::Suite=stable \
